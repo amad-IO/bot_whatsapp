@@ -1,0 +1,24 @@
+CREATE TABLE IF NOT EXISTS bot_rekening (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nama VARCHAR(100) NOT NULL UNIQUE,
+  saldo DECIMAL(15,2) DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS bot_transaksi (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pesan TEXT,
+  kategori VARCHAR(100),
+  jumlah DECIMAL(15,2),
+  tipe ENUM('Masuk', 'Keluar'),
+  rekening VARCHAR(100),
+  waktu_transaksi DATETIME NOT NULL,
+  created_at DATETIME DEFAULT NOW()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS bot_reminder (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  isi TEXT NOT NULL,
+  waktu DATETIME NOT NULL,
+  status ENUM('Pending', 'Terkirim', 'Selesai') DEFAULT 'Pending',
+  created_at DATETIME DEFAULT NOW()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

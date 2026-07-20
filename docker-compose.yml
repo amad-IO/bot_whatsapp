@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  wagateway:
+    build: .
+    container_name: wagateway_app
+    restart: always
+    ports:
+      - "3030:3030"
+    environment:
+      # Timpa settingan di .env khusus untuk docker
+      - DB_HOST=mysql_db
+      - DB_USER=root
+      - DB_PASSWORD=rootpassword
+      - DB_NAME=simrs_wa
+      # Puppeteer butuh ini untuk jalan di docker
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+    volumes:
+      - ./.env:/app/.env
+      - ./.wwebjs_auth:/app/.wwebjs_auth
+      - ./.wwebjs_cache:/app/.wwebjs_cache
+      - ./.wa-sessions.json:/app/.wa-sessions.json
+      - ./server-new.js:/app/server-new.js
+      - ./ai-bot.js:/app/ai-bot.js
+    depends_on:
+      mysql_db:
+        condition: service_healthy
+
+  mysql_db:
+    image: mysql:8.0
+    container_name: wagateway_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: simrs_wa
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # Auto-run skrip schema saat database pertama kali dibuat
+      - ./bot-schema.sql:/docker-entrypoint-initdb.d/1-bot-schema.sql
+      - ./schema-update.sql:/docker-entrypoint-initdb.d/2-schema-update.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql_data:

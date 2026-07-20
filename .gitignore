@@ -1,0 +1,9 @@
+node_modules/
+.env
+.wwebjs_auth/
+.wwebjs_cache/
+.wa-sessions.json
+mysql_data/
+*.zip
+docker_logs*.txt
+chats-log.jsonl
