@@ -1,32 +1,29 @@
 const db = require('./db');
 
-const MODEL_NAME = "llama-3.3-70b-versatile";
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const MODEL_NAME = "gemini-1.5-pro";
+const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent";
 const MAX_RETRIES = 2;
 
 async function panggilGroqJson(systemPrompt, userPrompt, maxTokens) {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) throw new Error("GROQ_API_KEY belum diset di .env");
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY belum diset di .env");
 
   const payload = {
-    model: MODEL_NAME,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user",   content: userPrompt   }
-    ],
-    temperature: 0,
-    max_tokens:  maxTokens,
+    system_instruction: { parts: { text: systemPrompt } },
+    contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+    generationConfig: {
+      response_mime_type: "application/json",
+      temperature: 0,
+      maxOutputTokens: maxTokens,
+    }
   };
 
   let lastErr;
   for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
     try {
-      const response = await fetch(GROQ_URL, {
+      const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
       
@@ -35,9 +32,9 @@ async function panggilGroqJson(systemPrompt, userPrompt, maxTokens) {
       }
 
       const result = await response.json();
-      if (!result.choices || !result.choices[0]) throw new Error("Groq tidak mengembalikan pilihan.");
+      if (!result.candidates || !result.candidates[0]) throw new Error("Gemini tidak mengembalikan pilihan.");
 
-      const raw = result.choices[0].message.content.trim();
+      const raw = result.candidates[0].content.parts[0].text.trim();
       const jsonStr = extractJson(raw);
       return JSON.parse(jsonStr);
     } catch (err) {
@@ -47,7 +44,7 @@ async function panggilGroqJson(systemPrompt, userPrompt, maxTokens) {
       }
     }
   }
-  throw new Error(`Groq AI gagal: ${lastErr.message}`);
+  throw new Error(`Gemini AI gagal: ${lastErr.message}`);
 }
 
 function extractJson(text) {
@@ -333,35 +330,31 @@ async function selesaiReminder(ai) {
 }
 
 async function jawabChatBebas(pertanyaan) {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return "⚠️ GROQ_API_KEY belum diset.";
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return "❌ GEMINI_API_KEY belum diset.";
 
   const systemPrompt =
     "Kamu adalah asisten pribadi yang ramah, singkat, dan membantu. " +
     "Jawab dalam Bahasa Indonesia yang santai tapi jelas.";
 
   const payload = {
-    model: MODEL_NAME,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user",   content: pertanyaan }
-    ],
-    temperature: 0.6,
-    max_tokens:  500,
+    system_instruction: { parts: { text: systemPrompt } },
+    contents: [{ role: "user", parts: [{ text: pertanyaan }] }],
+    generationConfig: {
+      temperature: 0.6,
+      maxOutputTokens: 500,
+    }
   };
 
-  const response = await fetch(GROQ_URL, {
+  const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
 
   const result = await response.json();
-  if (!result.choices || !result.choices[0]) return "⚠️ AI gagal merespons.";
-  return result.choices[0].message.content.trim();
+  if (!result.candidates || !result.candidates[0]) return "❌ AI gagal merespons.";
+  return result.candidates[0].content.parts[0].text.trim();
 }
 
 async function eksekusiIntent(intent, pesanAsli) {
