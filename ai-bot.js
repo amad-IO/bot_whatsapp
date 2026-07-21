@@ -7,7 +7,7 @@ async function panggilGroqJson(systemPrompt, userPrompt, maxTokens) {
   if (!apiKey) throw new Error("GROQ_API_KEY belum diset di .env");
 
   const payload = {
-    model: "llama3-70b-8192",
+    model: "llama-3.3-70b-versatile",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
@@ -340,7 +340,7 @@ async function jawabChatBebas(pertanyaan) {
     "Jawab dalam Bahasa Indonesia yang santai tapi jelas.";
 
   const payload = {
-    model: "llama3-70b-8192",
+    model: "llama-3.3-70b-versatile",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: pertanyaan }
