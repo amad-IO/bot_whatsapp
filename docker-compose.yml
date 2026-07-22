@@ -3,6 +3,7 @@ version: '3.8'
 services:
   wagateway:
     build: .
+    init: true
     container_name: wagateway_app
     restart: always
     ports:
