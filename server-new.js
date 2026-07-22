@@ -286,6 +286,16 @@ function connectWhatsApp(id) {
   client.initialize().catch(e => {
     console.error(`[${id}] Error initializing:`, e.message);
     delete initializing[id];
+
+    if (e.message.includes('Target closed') || e.message.includes('main frame') || e.message.includes('ECONNRESET')) {
+      console.log(`[${id}] Auto-recovering dari sesi yang korup...`);
+      try { client.destroy(); } catch(err) {}
+      const authPath = path.join(__dirname, '.wwebjs_auth', 'session-' + id);
+      if (fs.existsSync(authPath)) {
+        try { fs.rmSync(authPath, { recursive: true, force: true }); } catch(err) {}
+      }
+      setTimeout(() => connectWhatsApp(id), 5000);
+    }
   });
 }
 
