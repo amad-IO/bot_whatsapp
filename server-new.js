@@ -140,6 +140,16 @@ function connectWhatsApp(id) {
   initializing[id] = true;
   console.log(`\n[${id}] Starting WhatsApp Web.js...`);
 
+  const authDir = path.join(__dirname, '.wwebjs_auth', 'session-' + id);
+  if (fs.existsSync(authDir)) {
+    ['SingletonLock', 'SingletonCookie', 'SingletonSocket'].forEach(file => {
+      const filePath = path.join(authDir, file);
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); console.log(`[${id}] Removed stale lock: ${file}`); } catch (e) {}
+      }
+    });
+  }
+
   const client = new Client({
     authStrategy: new LocalAuth({ clientId: id }),
     puppeteer: {
