@@ -144,9 +144,13 @@ function connectWhatsApp(id) {
   if (fs.existsSync(authDir)) {
     ['SingletonLock', 'SingletonCookie', 'SingletonSocket'].forEach(file => {
       const filePath = path.join(authDir, file);
-      if (fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); console.log(`[${id}] Removed stale lock: ${file}`); } catch (e) {}
-      }
+      try {
+        const stat = fs.lstatSync(filePath);
+        if (stat) {
+          fs.unlinkSync(filePath);
+          console.log(`[${id}] Removed stale lock: ${file}`);
+        }
+      } catch (e) {}
     });
   }
 
