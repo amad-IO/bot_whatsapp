@@ -290,19 +290,8 @@ function connectWhatsApp(id) {
     delete initializing[id];
 
     if (e.message.includes('Target closed') || e.message.includes('main frame') || e.message.includes('ECONNRESET')) {
-      crashCount[id] = (crashCount[id] || 0) + 1;
+      console.log(`[${id}] Chrome crash terdeteksi. Mencoba restart browser tanpa menghapus sesi...`);
       try { client.destroy(); } catch(err) {}
-
-      if (crashCount[id] >= 3) {
-        console.log(`[${id}] Sesi benar-benar korup setelah 3x gagal restart. Menghapus sesi...`);
-        const authPath = path.join(__dirname, '.wwebjs_auth', 'session-' + id);
-        if (fs.existsSync(authPath)) {
-          try { fs.rmSync(authPath, { recursive: true, force: true }); } catch(err) {}
-        }
-        delete crashCount[id];
-      } else {
-        console.log(`[${id}] Chrome crash terdeteksi (Percobaan ${crashCount[id]}/3). Mencoba restart browser tanpa menghapus sesi...`);
-      }
       setTimeout(() => connectWhatsApp(id), 5000);
     }
   });
