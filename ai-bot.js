@@ -81,12 +81,7 @@ async function syncToGoogleSheets(data) {
 async function deteksiIntent(text) {
   const now = new Date();
   
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mins = String(now.getMinutes()).padStart(2, '0');
-  const nowStr = `${yyyy}-${mm}-${dd} ${hh}:${mins}`;
+  const nowStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Jakarta', hour12: false }).slice(0, 16);
 
   const systemPrompt =
     "You are an intent classifier for a personal Indonesian WhatsApp bot assistant. " +
@@ -286,7 +281,7 @@ async function tambahReminder(ai) {
   if (!ai.isi || !ai.waktu) {
     return "⚠️ Gak nangkep waktunya. Coba: 'ingetin besok jam 7 pagi meeting'";
   }
-  const waktuStr = ai.waktu.replace(" ", "T") + ":00";
+  const waktuStr = ai.waktu.replace(" ", "T") + ":00+07:00";
   const waktu = new Date(waktuStr);
   if (isNaN(waktu.getTime())) {
     return "⚠️ Format waktu gak valid. Coba sebutkan waktu lebih jelas.";
