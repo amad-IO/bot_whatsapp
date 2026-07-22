@@ -45,6 +45,7 @@ app.use('/', express.static(path.join(__dirname)));
 let clients = {};
 let qrStore = {};
 const initializing = {};
+const qrCount = {};
 
 // ============================================================
 //  RATE LIMITER (kirim langsung)
@@ -148,11 +149,27 @@ function connectWhatsApp(id) {
     },
   });
 
+  qrCount[id] = 0;
+
   client.on('qr', async (qr) => {
+    qrCount[id] = (qrCount[id] || 0) + 1;
+    if (qrCount[id] > 3) {
+      console.log(`[${id}] 3x QR expired. Menghapus klien secara otomatis...`);
+      client.destroy();
+      delete clients[id];
+      delete initializing[id];
+      delete qrStore[id];
+      delete qrCount[id];
+      const authPath = path.join(__dirname, '.wwebjs_auth', 'session-' + id);
+      if (fs.existsSync(authPath)) fs.rmSync(authPath, { recursive: true, force: true });
+      saveSessions();
+      return;
+    }
+
     qrStore[id] = qr;
     const img = await qrcode.toDataURL(qr);
     io.to('staff:' + id).emit('qr:' + id, img);
-    console.log(`[${id}] QR Generated`);
+    console.log(`[${id}] QR Generated (Attempt ${qrCount[id]}/3)`);
   });
 
   client.on('ready', () => {
