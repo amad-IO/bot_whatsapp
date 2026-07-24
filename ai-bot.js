@@ -1,4 +1,5 @@
 const db = require('./db');
+const eventBus = require('./eventBus');
 
 const MAX_RETRIES = 2;
 
@@ -294,6 +295,9 @@ async function tambahReminder(ai) {
     [ai.isi, mysqlTime, 'Pending']
   );
 
+  // Notify all connected desktop clients via SSE
+  eventBus.emit('reminders-updated');
+
   const options = { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' };
   const waktuLokal = waktu.toLocaleString('id-ID', options);
   
@@ -320,6 +324,8 @@ async function selesaiReminder(ai) {
   
   if (rows.length > 0) {
     await db.query('UPDATE bot_reminder SET status = "Selesai" WHERE id = ?', [rows[0].id]);
+    // Notify all connected desktop clients via SSE
+    eventBus.emit('reminders-updated');
     return `✅ Reminder "${rows[0].isi}" ditandai selesai.`;
   }
   

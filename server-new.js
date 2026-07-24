@@ -13,6 +13,7 @@ const rateLimit  = require('express-rate-limit');
 
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const db = require('./db');
+const eventBus = require('./eventBus');
 
 // ============================================================
 //  CONFIG
@@ -748,6 +749,7 @@ app.post('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
     const mysqlTime = parsedTime.toISOString().slice(0, 19).replace('T', ' ');
 
     const [result] = await db.query('INSERT INTO bot_reminder (isi, waktu, status) VALUES (?, ?, "Pending")', [isi, mysqlTime]);
+    eventBus.emit('reminders-updated');
     res.json({ success: true, id: result.insertId });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -758,6 +760,7 @@ app.post('/api/desktop/reminders/:id/done', desktopApiAuth, async (req, res) => 
   try {
     const { id } = req.params;
     await db.query('UPDATE bot_reminder SET status = "Selesai" WHERE id = ?', [id]);
+    eventBus.emit('reminders-updated');
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -772,12 +775,44 @@ app.post('/api/desktop/sync-from-sheets', async (req, res) => {
     if (type === 'reminder_status') {
       if (data && data.id && data.status) {
         await db.query('UPDATE bot_reminder SET status = ? WHERE id = ?', [data.status, data.id]);
+        eventBus.emit('reminders-updated');
       }
     }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// ============================================================
+//  API: SSE STREAM — Desktop push updates (no polling needed)
+// ============================================================
+app.get('/api/desktop/stream', desktopApiAuth, (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.flushHeaders();
+
+  // Send heartbeat every 30s to keep connection alive through proxies/firewalls
+  const heartbeat = setInterval(() => {
+    res.write(': heartbeat\n\n');
+  }, 30000);
+
+  // Immediately push current state so client loads data on connect
+  res.write('data: update\n\n');
+
+  // Push an update whenever reminders change (from WA bot or desktop API)
+  const onUpdate = () => {
+    res.write('data: update\n\n');
+  };
+  eventBus.on('reminders-updated', onUpdate);
+
+  // Cleanup when client disconnects
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    eventBus.off('reminders-updated', onUpdate);
+  });
 });
 
 // ============================================================
