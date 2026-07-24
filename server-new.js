@@ -719,6 +719,68 @@ async function processQueue(limit = 20) {
 }
 
 // ============================================================
+//  API: DESKTOP APP (REMINDER WIDGET)
+// ============================================================
+const desktopApiAuth = (req, res, next) => {
+  const key = process.env.DESKTOP_API_KEY;
+  if (!key) return next();
+  const provided = req.headers['x-desktop-key'];
+  if (provided !== key) return res.status(401).json({ success: false, message: 'Unauthorized' });
+  next();
+};
+
+app.get('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT id, isi, waktu, status FROM bot_reminder WHERE status = "Pending" ORDER BY waktu ASC');
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
+  try {
+    const { isi, waktu } = req.body;
+    if (!isi || !waktu) return res.status(400).json({ success: false, error: 'isi and waktu required' });
+    
+    const parsedTime = new Date(waktu);
+    if (isNaN(parsedTime.getTime())) return res.status(400).json({ success: false, error: 'Invalid time format' });
+    const mysqlTime = parsedTime.toISOString().slice(0, 19).replace('T', ' ');
+
+    const [result] = await db.query('INSERT INTO bot_reminder (isi, waktu, status) VALUES (?, ?, "Pending")', [isi, mysqlTime]);
+    res.json({ success: true, id: result.insertId });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/desktop/reminders/:id/done', desktopApiAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('UPDATE bot_reminder SET status = "Selesai" WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/desktop/sync-from-sheets', async (req, res) => {
+  try {
+    const { token, type, data } = req.body;
+    if (token !== process.env.SHEETS_SYNC_TOKEN) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    
+    if (type === 'reminder_status') {
+      if (data && data.id && data.status) {
+        await db.query('UPDATE bot_reminder SET status = ? WHERE id = ?', [data.status, data.id]);
+      }
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================
 //  API: TEMPLATES
 // ============================================================
 app.get('/api/templates', async (req, res) => {
