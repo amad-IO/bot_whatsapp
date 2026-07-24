@@ -750,6 +750,16 @@ app.post('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
 
     const [result] = await db.query('INSERT INTO bot_reminder (isi, waktu, status) VALUES (?, ?, "Pending")', [isi, mysqlTime]);
     eventBus.emit('reminders-updated');
+    // Sync ke Google Sheets (fire and forget)
+    const { syncToGoogleSheets } = require('./ai-bot');
+    syncToGoogleSheets({
+      token:  process.env.GOOGLE_SHEET_TOKEN || '',
+      action: 'reminder_baru',
+      id:     result.insertId,
+      isi:    isi,
+      waktu:  mysqlTime,
+      status: 'Pending',
+    });
     res.json({ success: true, id: result.insertId });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -761,6 +771,14 @@ app.post('/api/desktop/reminders/:id/done', desktopApiAuth, async (req, res) => 
     const { id } = req.params;
     await db.query('UPDATE bot_reminder SET status = "Selesai" WHERE id = ?', [id]);
     eventBus.emit('reminders-updated');
+    // Sync status ke Google Sheets (fire and forget)
+    const { syncToGoogleSheets } = require('./ai-bot');
+    syncToGoogleSheets({
+      token:  process.env.GOOGLE_SHEET_TOKEN || '',
+      action: 'reminder_update',
+      id:     id,
+      status: 'Selesai',
+    });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -813,6 +831,70 @@ app.get('/api/desktop/stream', desktopApiAuth, (req, res) => {
     clearInterval(heartbeat);
     eventBus.off('reminders-updated', onUpdate);
   });
+});
+
+// ============================================================
+//  API: WEBHOOK DARI GOOGLE SHEETS (Sheets → VPS → MySQL → Desktop)
+//  Dipanggil oleh onEdit() di SHEET_SYNC.gs saat pengguna edit Sheets
+// ============================================================
+app.post('/api/webhook/sheets', async (req, res) => {
+  try {
+    const { sheets_token, type, ...data } = req.body;
+
+    // Validasi token pengaman dari Google Sheets
+    const expectedToken = process.env.SHEETS_WEBHOOK_TOKEN || 'RAHASIA_SHEETS_WEBHOOK_TOKEN';
+    if (sheets_token !== expectedToken) {
+      return res.status(401).json({ success: false, error: 'Unauthorized — token tidak cocok' });
+    }
+
+    if (type === 'reminder_edit') {
+      // Pengguna mengedit baris di sheet Reminder
+      const { id, field, value, isi, waktu, status } = data;
+      if (!id) return res.status(400).json({ success: false, error: 'ID reminder wajib diisi' });
+
+      if (field === 'status') {
+        await db.query('UPDATE bot_reminder SET status = ? WHERE id = ?', [value, id]);
+      } else if (field === 'isi') {
+        await db.query('UPDATE bot_reminder SET isi = ? WHERE id = ?', [value, id]);
+      } else if (field === 'waktu' && value) {
+        const parsedWaktu = new Date(value);
+        if (!isNaN(parsedWaktu.getTime())) {
+          const mysqlWaktu = parsedWaktu.toISOString().slice(0, 19).replace('T', ' ');
+          await db.query('UPDATE bot_reminder SET waktu = ? WHERE id = ?', [mysqlWaktu, id]);
+        }
+      }
+
+      // Beritahu Desktop App via SSE
+      eventBus.emit('reminders-updated');
+      return res.json({ success: true, message: `Reminder #${id} field '${field}' diupdate` });
+
+    } else if (type === 'saldo_edit') {
+      // Pengguna mengedit saldo langsung di sheet Saldo
+      const { rekening, saldo } = data;
+      if (!rekening) return res.status(400).json({ success: false, error: 'Rekening wajib diisi' });
+
+      const [existing] = await db.query('SELECT id FROM bot_rekening WHERE LOWER(nama) = ?', [rekening.toLowerCase()]);
+      if (existing.length > 0) {
+        await db.query('UPDATE bot_rekening SET saldo = ? WHERE LOWER(nama) = ?', [saldo, rekening.toLowerCase()]);
+      } else {
+        await db.query('INSERT INTO bot_rekening (nama, saldo) VALUES (?, ?)', [rekening, saldo]);
+      }
+      return res.json({ success: true, message: `Saldo ${rekening} diupdate ke ${saldo}` });
+
+    } else if (type === 'transaksi_edit') {
+      // Pengguna mengedit baris transaksi di sheet Transaksi
+      // Untuk saat ini, kita log saja karena edit transaksi lama sangat jarang
+      console.log('[Sheets Webhook] transaksi_edit diterima (diabaikan):', data);
+      return res.json({ success: true, message: 'transaksi_edit diterima (read-only, tidak diubah di MySQL)' });
+
+    } else {
+      return res.status(400).json({ success: false, error: 'Type tidak dikenal: ' + type });
+    }
+
+  } catch (err) {
+    console.error('[Sheets Webhook] Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // ============================================================

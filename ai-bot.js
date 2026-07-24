@@ -290,10 +290,20 @@ async function tambahReminder(ai) {
 
   const mysqlTime = waktu.toISOString().slice(0, 19).replace('T', ' ');
 
-  await db.query(
+  const [result] = await db.query(
     'INSERT INTO bot_reminder (isi, waktu, status) VALUES (?, ?, ?)',
     [ai.isi, mysqlTime, 'Pending']
   );
+
+  // Sync reminder baru ke Google Sheets
+  syncToGoogleSheets({
+    token:   process.env.GOOGLE_SHEET_TOKEN || '',
+    action:  'reminder_baru',
+    id:      result.insertId,
+    isi:     ai.isi,
+    waktu:   mysqlTime,
+    status:  'Pending',
+  });
 
   // Notify all connected desktop clients via SSE
   eventBus.emit('reminders-updated');
@@ -324,6 +334,13 @@ async function selesaiReminder(ai) {
   
   if (rows.length > 0) {
     await db.query('UPDATE bot_reminder SET status = "Selesai" WHERE id = ?', [rows[0].id]);
+    // Sync status update ke Google Sheets
+    syncToGoogleSheets({
+      token:  process.env.GOOGLE_SHEET_TOKEN || '',
+      action: 'reminder_update',
+      id:     rows[0].id,
+      status: 'Selesai',
+    });
     // Notify all connected desktop clients via SSE
     eventBus.emit('reminders-updated');
     return `✅ Reminder "${rows[0].isi}" ditandai selesai.`;
@@ -421,5 +438,6 @@ async function processBotMessage(pesan) {
 }
 
 module.exports = {
-  processBotMessage
+  processBotMessage,
+  syncToGoogleSheets,
 };
