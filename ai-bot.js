@@ -221,7 +221,9 @@ async function prosesTransaksi(ai) {
   
   if (ai.type === 'Keluar') {
     response += `Uang keluar : ${totalHariIni}\n`;
-    if (totalHariIni >= 45000) {
+    
+    // Warning hanya keluar SEKALI ketika batas 45rb baru saja dilewati oleh transaksi ini
+    if (totalHariIni >= 45000 && (totalHariIni - ai.amt) < 45000) {
       response += `\n⚠️ *Peringatan:* Kamu sudah mengeluarkan total Rp ${fmt(totalHariIni)} hari ini! Hati-hati, sudah mendekati/melewati batas harianmu (50 ribu).`;
     }
   }
