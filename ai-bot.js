@@ -211,22 +211,22 @@ async function prosesTransaksi(ai) {
     totalHariIni = Number(rows[0].total) || 0;
   }
 
-  // Generate Natural Response via AI
-  const sysPrompt = "Kamu adalah asisten keuangan pribadi bahasa Indonesia yang gaul, santai, dan blak-blakan. Balas chat dalam 1-2 kalimat saja, jangan kaku.";
-  let userPrompt = `Saya baru saja nyatet transaksi ${ai.type} sebesar Rp ${fmt(ai.amt)} untuk ${ai.cat}. `;
+  // Generate Structured Response
+  let response = `📝 *Transaksi Berhasil Tercatat*\n`;
+  response += `---------------------------------\n`;
+  response += `Kategori : ${ai.cat}\n`;
+  response += `Jumlah : Rp ${fmt(ai.amt)}\n`;
+  response += `keterangan : ${ai.pesan || '-'}\n`;
+  response += `Tipe : ${ai.type}\n`;
   
   if (ai.type === 'Keluar') {
-    userPrompt += `Total pengeluaranku hari ini udah mencapai Rp ${fmt(totalHariIni)}. `;
+    response += `Uang keluar : ${totalHariIni}\n`;
     if (totalHariIni >= 45000) {
-      userPrompt += "KASIH TEGURAN/WARNING KERAS ke aku karena udah hampir nyentuh/melewati batas pengeluaran harian 50rb! Jangan pakai format template, jadikan paragraf natural.";
-    } else {
-      userPrompt += "Komentari pengeluaran ini dengan santai.";
+      response += `\n⚠️ *Peringatan:* Kamu sudah mengeluarkan total Rp ${fmt(totalHariIni)} hari ini! Hati-hati, sudah mendekati/melewati batas harianmu (50 ribu).`;
     }
-  } else {
-    userPrompt += "Kasih selamat atau respon positif santai.";
   }
 
-  return await panggilGroqText(sysPrompt, userPrompt);
+  return response;
 }
 
 async function getLaporan(periode, rek) {
