@@ -50,6 +50,34 @@ async function panggilGroqJson(systemPrompt, userPrompt, maxTokens) {
   throw new Error(`Groq AI gagal: ${lastErr.message}`);
 }
 
+async function panggilGroqText(systemPrompt, userPrompt) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return "❌ GROQ_API_KEY belum diset.";
+
+  const payload = {
+    model: "llama-3.3-70b-versatile",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ],
+    temperature: 0.7,
+    max_tokens: 300
+  };
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: "POST",
+    headers: { 
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json" 
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const result = await response.json();
+  if (!result.choices || !result.choices[0]) return "Tercatat!";
+  return result.choices[0].message.content.trim();
+}
+
 function extractJson(text) {
   let clean = text.replace(/```json|```/gi, "").trim();
   const match = clean.match(/\{[\s\S]*\}/);
@@ -81,7 +109,6 @@ async function syncToGoogleSheets(data) {
 
 async function deteksiIntent(text) {
   const now = new Date();
-  
   const nowStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Jakarta', hour12: false }).slice(0, 16);
 
   const systemPrompt =
@@ -96,8 +123,6 @@ async function deteksiIntent(text) {
     `Classify this Indonesian message: "${text}"\n\n` +
     "Possible intents:\n" +
     "- transaksi_keuangan: user mentions any money movement (beli/bayar/jajan/dapat/gajian/pinjem/nombok/nraktir/dll)\n" +
-    "- cek_saldo: user asks current balance (saldo, tabungan, punya uang berapa, dll)\n" +
-    "- atur_saldo: user wants to SET/RESET a specific account balance to a new value (atur saldo, ubah saldo, set saldo, reset saldo, jadikan saldo, atur ulang saldo, koreksi saldo, dll)\n" +
     "- laporan_keuangan: user asks financial report/summary for any time period\n" +
     "- tambah_reminder: user wants to be reminded of something at a specific time\n" +
     "- list_reminder: user asks to see pending reminders or todo list\n" +
@@ -109,9 +134,6 @@ async function deteksiIntent(text) {
     "  - type: 'Masuk' (receive money) or 'Keluar' (spend/lend money)\n" +
     "  - rek: account name if mentioned (default: 'Cash')\n" +
     "  - waktu_transaksi: if user mentions WHEN the transaction happened, resolve to yyyy-MM-dd HH:mm. If not mentioned, set to null.\n" +
-    "For atur_saldo:\n" +
-    "  - rek: account name (e.g. 'Cash', 'BCA', 'Dana')\n" +
-    "  - amt: the NEW target balance as integer (e.g. 'jadi 97000' → 97000, 'menjadi 30rb' → 30000)\n" +
     "For laporan_keuangan:\n" +
     "  - periode: 'harian' (today) | 'mingguan' (this week) | 'bulanan' (this month, default)\n" +
     "  - rek: specific account name if user asks per-account report, else null\n" +
@@ -132,112 +154,79 @@ function fmt(x) {
   return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
-async function updateSaldo(rekening, amt, type) {
-  const rekLower = rekening.toLowerCase();
-  const [rows] = await db.query('SELECT saldo FROM bot_rekening WHERE LOWER(nama) = ?', [rekLower]);
-  
-  if (rows.length > 0) {
-    const current = Number(rows[0].saldo) || 0;
-    const newSaldo = type === "Masuk" ? current + amt : current - amt;
-    await db.query('UPDATE bot_rekening SET saldo = ? WHERE LOWER(nama) = ?', [newSaldo, rekLower]);
-    return newSaldo;
-  } else {
-    const initial = type === "Masuk" ? amt : -amt;
-    await db.query('INSERT INTO bot_rekening (nama, saldo) VALUES (?, ?)', [rekening, initial]);
-    return initial;
-  }
-}
-
-async function getSaldo(rekening) {
-  const [rows] = await db.query('SELECT saldo FROM bot_rekening WHERE LOWER(nama) = ?', [rekening.toLowerCase()]);
-  return rows.length > 0 ? Number(rows[0].saldo) : 0;
-}
-
 async function prosesTransaksi(ai) {
   if (!ai.cat || ai.amt === null || ai.amt === undefined) {
     return "⚠️ Tidak bisa memahami transaksinya. Coba format: 'beli makan 25000 cash'";
   }
   const rekening = (ai.rek || "Cash").trim();
 
-  // Gunakan waktu yang disebutkan user, atau NOW jika tidak disebutkan
+  // Waktu aktual transaksi
   let waktuTransaksi;
   if (ai.waktu_transaksi) {
-    const parsed = new Date(ai.waktu_transaksi.replace(' ', 'T') + ':00');
+    const parsed = new Date(ai.waktu_transaksi.replace(' ', 'T') + ':00+07:00');
     waktuTransaksi = isNaN(parsed.getTime()) ? new Date() : parsed;
   } else {
     waktuTransaksi = new Date();
   }
   const mysqlWaktu = waktuTransaksi.toISOString().slice(0, 19).replace('T', ' ');
 
-  await db.query(
+  // Perhitungan Tanggal Bisnis (Mundur 6 jam)
+  const businessDateObj = new Date(waktuTransaksi.getTime() - (6 * 60 * 60 * 1000));
+  const businessDateStr = businessDateObj.toISOString().slice(0, 10);
+  
+  // Start & End hari bisnis (jam 06:00 sampai 05:59 besoknya)
+  const startDay = businessDateStr + ' 06:00:00';
+  const nextDateObj = new Date(businessDateObj.getTime() + (24 * 60 * 60 * 1000));
+  const nextDateStr = nextDateObj.toISOString().slice(0, 10);
+  const endDay = nextDateStr + ' 05:59:59';
+
+  // Insert ke DB
+  const [result] = await db.query(
     'INSERT INTO bot_transaksi (pesan, kategori, jumlah, tipe, rekening, waktu_transaksi) VALUES (?, ?, ?, ?, ?, ?)',
     [ai.pesan || "-", ai.cat, ai.amt, ai.type, rekening, mysqlWaktu]
   );
+  const insertId = result.insertId;
 
-  const saldoKini = await updateSaldo(rekening, ai.amt, ai.type);
-
-  // Sync to Google Sheets (fire and forget)
-  syncToGoogleSheets({
-    token:            process.env.GOOGLE_SHEET_TOKEN || '',
-    waktu_transaksi:  mysqlWaktu,
-    kategori:         ai.cat,
-    nominal:          ai.amt,
-    tipe:             ai.type,
-    rekening:         rekening,
-    keterangan:       ai.pesan || '-'
-  });
-
-  return (
-    "📝 *Transaksi Tercatat*\n━━━━━━━━━━━━━━━━━━\n" +
-    `📂 Kategori  : ${ai.cat}\n` +
-    `💰 Jumlah    : Rp ${fmt(ai.amt)}\n` +
-    `💳 Rekening  : ${rekening} (Rp ${fmt(saldoKini)})\n` +
-    `↔️ Tipe      : ${ai.type}\n` +
-    "━━━━━━━━━━━━━━━━━━\n✅ Berhasil disimpan"
-  );
-}
-
-async function setSaldo(namaRekening, nominalBaru) {
-  // Cek apakah rekening ada
-  const [existing] = await db.query('SELECT nama, saldo FROM bot_rekening WHERE LOWER(nama) = ?', [namaRekening.toLowerCase()]);
-  
-  if (existing.length === 0) {
-    // Buat rekening baru jika belum ada
-    await db.query('INSERT INTO bot_rekening (nama, saldo) VALUES (?, ?)', [namaRekening, nominalBaru]);
-  } else {
-    // Update saldo yang ada
-    await db.query('UPDATE bot_rekening SET saldo = ? WHERE LOWER(nama) = ?', [nominalBaru, namaRekening.toLowerCase()]);
-  }
-
-  // Sync ke Google Sheets
+  // Sync to Google Sheets
   syncToGoogleSheets({
     token:           process.env.GOOGLE_SHEET_TOKEN || '',
-    action:          'set_saldo',
-    rekening:        namaRekening,
-    saldo:           nominalBaru,
-    waktu_transaksi: new Date().toISOString().slice(0, 16).replace('T', ' '),
-    kategori:        'Koreksi Saldo',
-    nominal:         nominalBaru,
-    tipe:            'Koreksi',
-    keterangan:      `Set saldo ${namaRekening} = ${nominalBaru}`
+    action:          'transaksi',
+    id:              insertId,
+    tanggal:         businessDateStr,
+    waktu_transaksi: mysqlWaktu,
+    kategori:        ai.cat,
+    nominal:         ai.amt,
+    tipe:            ai.type,
+    rekening:        rekening,
+    keterangan:      ai.pesan || '-'
   });
 
-  return `✅ *Saldo ${namaRekening} diperbarui*\nSaldo baru: Rp ${fmt(nominalBaru)}`;
-}
-
-async function getAllSaldo() {
-  const [rows] = await db.query('SELECT nama, saldo FROM bot_rekening ORDER BY nama ASC');
-  if (rows.length === 0) return "ℹ️ Belum ada saldo tercatat.";
-
-  let output = "💰 *Ringkasan Saldo*\n━━━━━━━━━━━━━━━━━━\n";
-  let total = 0;
-  for (const row of rows) {
-    const saldo = Number(row.saldo) || 0;
-    output += `${saldo >= 0 ? "▪️" : "🔴"} ${row.nama}: Rp ${fmt(saldo)}\n`;
-    total += saldo;
+  // Calculate Total Pengeluaran Hari Ini (Business Day)
+  let totalHariIni = 0;
+  if (ai.type === 'Keluar') {
+    const [rows] = await db.query(
+      'SELECT SUM(jumlah) as total FROM bot_transaksi WHERE tipe="Keluar" AND waktu_transaksi >= ? AND waktu_transaksi <= ?',
+      [startDay, endDay]
+    );
+    totalHariIni = Number(rows[0].total) || 0;
   }
-  output += `━━━━━━━━━━━━━━━━━━\n💼 *Total: Rp ${fmt(total)}*`;
-  return output;
+
+  // Generate Natural Response via AI
+  const sysPrompt = "Kamu adalah asisten keuangan pribadi bahasa Indonesia yang gaul, santai, dan blak-blakan. Balas chat dalam 1-2 kalimat saja, jangan kaku.";
+  let userPrompt = `Saya baru saja nyatet transaksi ${ai.type} sebesar Rp ${fmt(ai.amt)} untuk ${ai.cat}. `;
+  
+  if (ai.type === 'Keluar') {
+    userPrompt += `Total pengeluaranku hari ini udah mencapai Rp ${fmt(totalHariIni)}. `;
+    if (totalHariIni >= 45000) {
+      userPrompt += "KASIH TEGURAN/WARNING KERAS ke aku karena udah hampir nyentuh/melewati batas pengeluaran harian 50rb! Jangan pakai format template, jadikan paragraf natural.";
+    } else {
+      userPrompt += "Komentari pengeluaran ini dengan santai.";
+    }
+  } else {
+    userPrompt += "Kasih selamat atau respon positif santai.";
+  }
+
+  return await panggilGroqText(sysPrompt, userPrompt);
 }
 
 async function getLaporan(periode, rek) {
@@ -273,7 +262,7 @@ async function getLaporan(periode, rek) {
   return (
     `📊 *Laporan ${label}*\n━━━━━━━━━━━━━━━━━━\n` +
     `📥 Masuk : Rp ${fmt(masuk)}\n📤 Keluar: Rp ${fmt(keluar)}\n` +
-    `💹 Selisih: Rp ${fmt(masuk - keluar)}\n━━━━━━━━━━━━━━━━━━\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
     `📋 *5 Transaksi Terakhir:*\n${recent.join('\n')}`
   );
 }
@@ -295,7 +284,6 @@ async function tambahReminder(ai) {
     [ai.isi, mysqlTime, 'Pending']
   );
 
-  // Sync reminder baru ke Google Sheets
   syncToGoogleSheets({
     token:   process.env.GOOGLE_SHEET_TOKEN || '',
     action:  'reminder_baru',
@@ -305,7 +293,6 @@ async function tambahReminder(ai) {
     status:  'Pending',
   });
 
-  // Notify all connected desktop clients via SSE
   eventBus.emit('reminders-updated');
 
   const options = { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' };
@@ -334,14 +321,12 @@ async function selesaiReminder(ai) {
   
   if (rows.length > 0) {
     await db.query('UPDATE bot_reminder SET status = "Selesai" WHERE id = ?', [rows[0].id]);
-    // Sync status update ke Google Sheets
     syncToGoogleSheets({
       token:  process.env.GOOGLE_SHEET_TOKEN || '',
       action: 'reminder_update',
       id:     rows[0].id,
       status: 'Selesai',
     });
-    // Notify all connected desktop clients via SSE
     eventBus.emit('reminders-updated');
     return `✅ Reminder "${rows[0].isi}" ditandai selesai.`;
   }
@@ -350,42 +335,13 @@ async function selesaiReminder(ai) {
 }
 
 async function jawabChatBebas(pertanyaan) {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return "❌ GROQ_API_KEY belum diset.";
-
-  const systemPrompt =
-    "Kamu adalah asisten pribadi yang ramah, singkat, dan membantu. " +
-    "Jawab dalam Bahasa Indonesia yang santai tapi jelas.";
-
-  const payload = {
-    model: "llama-3.3-70b-versatile",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: pertanyaan }
-    ],
-    temperature: 0.6,
-    max_tokens: 500
-  };
-
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: "POST",
-    headers: { 
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json" 
-    },
-    body: JSON.stringify(payload)
-  });
-
-  const result = await response.json();
-  if (!result.choices || !result.choices[0]) return "❌ AI gagal merespons.";
-  return result.choices[0].message.content.trim();
+  const sys = "Kamu adalah asisten pribadi yang ramah, singkat, dan membantu. Jawab dalam Bahasa Indonesia yang santai tapi jelas.";
+  return await panggilGroqText(sys, pertanyaan);
 }
 
 async function eksekusiIntent(intent, pesanAsli) {
   switch (intent.intent) {
     case "transaksi_keuangan": return await prosesTransaksi(intent);
-    case "cek_saldo":          return await getAllSaldo();
-    case "atur_saldo":         return await setSaldo(intent.rek || 'Cash', intent.amt || 0);
     case "laporan_keuangan":   return await getLaporan(intent.periode || 'bulanan', intent.rek || null);
     case "tambah_reminder":    return await tambahReminder(intent);
     case "list_reminder":      return await listReminder();
@@ -397,31 +353,10 @@ async function eksekusiIntent(intent, pesanAsli) {
 }
 
 async function processBotMessage(pesan) {
-  // Perintah set saldo — berbagai variasi yang didukung:
-  // "set saldo cash 97000"
-  // "koreksi saldo cash 97000"
-  // "ubah saldo cash 97000"
-  // "saldo cash sekarang 97000"
-  // "cash 97000 sekarang"
-  const setSaldoMatch =
-    pesan.trim().match(/^(?:set|ubah|koreksi|update)\s+saldo\s+(\w+)\s+([\d.,]+)/i) ||
-    pesan.trim().match(/^saldo\s+(\w+)\s+(?:sekarang|jadi|=|adalah)\s+([\d.,]+)/i) ||
-    pesan.trim().match(/^(\w+)\s+([\d.,]+)\s+(?:sekarang|jadi)/i);
-  if (setSaldoMatch) {
-    const namaRek = setSaldoMatch[1];
-    const rawNum  = setSaldoMatch[2].replace(/\./g, '').replace(/,/g, '.');
-    const nominal = parseFloat(rawNum);
-    // Pastikan bukan salah tangkap (minimal nama rekening 2 huruf)
-    if (!isNaN(nominal) && namaRek.length >= 2) {
-      return await setSaldo(namaRek, nominal);
-    }
-  }
-
   if (/^(help|bantuan)$/i.test(pesan.trim())) {
     return (
       "*Asisten Pribadi*\n━━━━━━━━━━━━━━━━━━\n" +
-      "*Keuangan:*\n  • beli makan 25000\n  • saldo\n  • laporan bulan ini\n\n" +
-      "*Koreksi Saldo:*\n  • set saldo cash 97000\n  • set saldo BCA 500000\n\n" +
+      "*Keuangan:*\n  • beli makan 25000\n  • dapet gaji 5jt\n  • laporan bulan ini\n\n" +
       "*Reminder:*\n  • ingetin besok jam 7 pagi meeting\n  • list reminder\n\n" +
       "*Chat Bebas:*\n  • tanya apa aja, langsung dijawab AI\n\n" +
       "━━━━━━━━━━━━━━━━━━"
@@ -440,4 +375,5 @@ async function processBotMessage(pesan) {
 module.exports = {
   processBotMessage,
   syncToGoogleSheets,
+  panggilGroqText
 };

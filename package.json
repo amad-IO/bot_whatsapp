@@ -23,6 +23,7 @@
     "express-fileupload": "^1.5.2",
     "express-rate-limit": "^8.5.2",
     "mysql2": "^3.15.3",
+    "node-cron": "^4.6.0",
     "puppeteer": "^24.30.0",
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.1",

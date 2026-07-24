@@ -14,6 +14,7 @@ const rateLimit  = require('express-rate-limit');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const db = require('./db');
 const eventBus = require('./eventBus');
+const cron = require('node-cron');
 
 // ============================================================
 //  CONFIG
@@ -883,9 +884,33 @@ app.post('/api/webhook/sheets', async (req, res) => {
 
     } else if (type === 'transaksi_edit') {
       // Pengguna mengedit baris transaksi di sheet Transaksi
-      // Untuk saat ini, kita log saja karena edit transaksi lama sangat jarang
-      console.log('[Sheets Webhook] transaksi_edit diterima (diabaikan):', data);
-      return res.json({ success: true, message: 'transaksi_edit diterima (read-only, tidak diubah di MySQL)' });
+      const { id, field, value } = data;
+      if (!id || !field) return res.status(400).json({ success: false, error: 'ID dan field wajib diisi' });
+
+      // Cek apakah field valid
+      const allowedFields = ['tanggal', 'waktu_transaksi', 'kategori', 'jumlah', 'tipe', 'rekening', 'keterangan'];
+      if (!allowedFields.includes(field)) {
+        return res.status(400).json({ success: false, error: 'Field tidak valid' });
+      }
+
+      let finalValue = value;
+      // Jika field jumlah, pastikan format angka
+      if (field === 'jumlah') {
+        const rawNum = value.toString().replace(/Rp/gi, '').replace(/\./g, '').replace(/,/g, '.').trim();
+        finalValue = parseFloat(rawNum) || 0;
+      }
+      // Jika tipe tanggal atau waktu, sesuaikan format
+      if (field === 'tanggal' || field === 'waktu_transaksi') {
+        const parsed = new Date(value);
+        if (!isNaN(parsed.getTime())) {
+           finalValue = parsed.toISOString().slice(0, 19).replace('T', ' ');
+        }
+      }
+
+      await db.query(`UPDATE bot_transaksi SET ?? = ? WHERE id = ?`, [field, finalValue, id]);
+      
+      console.log(`[Sheets Webhook] Transaksi #${id} diupdate: ${field} = ${finalValue}`);
+      return res.json({ success: true, message: `Transaksi #${id} field '${field}' diupdate ke MySQL` });
 
     } else {
       return res.status(400).json({ success: false, error: 'Type tidak dikenal: ' + type });
@@ -977,6 +1002,80 @@ setInterval(async () => {
     console.error("Error checking reminders:", err.message);
   }
 }, 60 * 1000);
+
+// ============================================================
+//  CRON: LAPORAN KEUANGAN 08:00 PAGI
+// ============================================================
+const aiBot = require('./ai-bot');
+
+cron.schedule('0 8 * * *', async () => {
+  try {
+    const ownerNumber = process.env.OWNER_WA_NUMBER;
+    if (!ownerNumber) return;
+    const clientIds = Object.keys(clients);
+    if (clientIds.length === 0) return;
+    const client = clients[clientIds[0]];
+    const waId = ownerNumber + '@c.us';
+
+    const now = new Date();
+    const isFirstDayOfMonth = now.getDate() === 1;
+
+    // Kalkulasi Hari Kemarin (Business Day)
+    // Start: Kemarin 06:00:00, End: Hari Ini 05:59:59
+    const yesterday = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+    const startDay = yesterday.toISOString().slice(0, 10) + ' 06:00:00';
+    const endDay = now.toISOString().slice(0, 10) + ' 05:59:59';
+
+    const [rowKemarin] = await db.query(
+      'SELECT SUM(jumlah) as total FROM bot_transaksi WHERE tipe="Keluar" AND waktu_transaksi >= ? AND waktu_transaksi <= ?',
+      [startDay, endDay]
+    );
+    const totalKemarin = Number(rowKemarin[0].total) || 0;
+
+    const [itemsBesar] = await db.query(
+      'SELECT kategori, jumlah FROM bot_transaksi WHERE tipe="Keluar" AND jumlah >= 45000 AND waktu_transaksi >= ? AND waktu_transaksi <= ?',
+      [startDay, endDay]
+    );
+
+    let listBesar = '';
+    if (itemsBesar.length > 0) {
+      listBesar = itemsBesar.map(i => `- ${i.kategori} (Rp ${i.jumlah.toLocaleString('id-ID')})`).join('\\n');
+    }
+
+    let sysPrompt = "Kamu adalah asisten pribadi bahasa Indonesia yang gaul, seru, dan santai. Tugasmu memberikan laporan keuangan.";
+    let userPrompt = `Beri tahu saya laporan keuangan kemarin. Total pengeluaran: Rp ${totalKemarin.toLocaleString('id-ID')}. `;
+    if (listBesar) {
+      userPrompt += `Pengeluaran besar (>45rb) yang harus dinotis:\\n${listBesar}. Nasihati saya santai soal pengeluaran ini.`;
+    } else {
+      userPrompt += `Tidak ada pengeluaran besar (di atas 45rb) kemarin, puji saya dengan santai.`;
+    }
+
+    // Jika ini tanggal 1, berikan juga Laporan Bulan Lalu
+    if (isFirstDayOfMonth) {
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const startMonth = lastMonth.toISOString().slice(0, 10) + ' 06:00:00';
+      // End month is 1st of current month at 05:59:59
+      const endMonth = now.toISOString().slice(0, 10) + ' 05:59:59';
+      
+      const [rowBulanLalu] = await db.query(
+        'SELECT SUM(jumlah) as total FROM bot_transaksi WHERE tipe="Keluar" AND waktu_transaksi >= ? AND waktu_transaksi <= ?',
+        [startMonth, endMonth]
+      );
+      const totalBulanLalu = Number(rowBulanLalu[0].total) || 0;
+      userPrompt += `\\n\\nOh ya, ini tanggal 1! Tolong kasih tahu juga bahwa total pengeluaran SUTU BULAN PENUH kemarin adalah Rp ${totalBulanLalu.toLocaleString('id-ID')}. Sampaikan dengan gaya heboh atau kaget (tergantung nominalnya, kalau di atas 2 juta agak omelin).`;
+    }
+
+    const aiMessage = await aiBot.panggilGroqText(sysPrompt, userPrompt);
+    await client.sendMessage(waId, "☀️ *Laporan Pagi*\n\n" + aiMessage);
+    console.log('[CRON 08:00] Laporan pagi berhasil dikirim.');
+
+  } catch (err) {
+    console.error('[CRON 08:00] Error:', err.message);
+  }
+}, {
+  scheduled: true,
+  timezone: "Asia/Jakarta"
+});
 
 // ============================================================
 //  RUN SERVER + AUTO-START
