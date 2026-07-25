@@ -733,7 +733,7 @@ const desktopApiAuth = (req, res, next) => {
 
 app.get('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id, isi, waktu, status FROM bot_reminder WHERE status = "Pending" ORDER BY waktu ASC');
+    const [rows] = await db.query('SELECT id, isi, waktu, status FROM bot_reminder WHERE status = "Menunggu Waktu" ORDER BY waktu ASC');
     res.json({ success: true, data: rows });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -749,7 +749,7 @@ app.post('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
     if (isNaN(parsedTime.getTime())) return res.status(400).json({ success: false, error: 'Invalid time format' });
     const mysqlTime = parsedTime.toISOString().slice(0, 19).replace('T', ' ');
 
-    const [result] = await db.query('INSERT INTO bot_reminder (isi, waktu, status) VALUES (?, ?, "Pending")', [isi, mysqlTime]);
+    const [result] = await db.query('INSERT INTO bot_reminder (isi, waktu, status) VALUES (?, ?, "Menunggu Waktu")', [isi, mysqlTime]);
     eventBus.emit('reminders-updated');
     // Sync ke Google Sheets (fire and forget)
     const { syncToGoogleSheets } = require('./ai-bot');
@@ -759,7 +759,7 @@ app.post('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
       id:     result.insertId,
       isi:    isi,
       waktu:  mysqlTime,
-      status: 'Pending',
+      status: 'Menunggu Waktu',
     });
     res.json({ success: true, id: result.insertId });
   } catch (err) {
@@ -770,7 +770,7 @@ app.post('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
 app.post('/api/desktop/reminders/:id/done', desktopApiAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    await db.query('UPDATE bot_reminder SET status = "Selesai" WHERE id = ?', [id]);
+    await db.query('UPDATE bot_reminder SET status = "Tugas Selesai" WHERE id = ?', [id]);
     eventBus.emit('reminders-updated');
     // Sync status ke Google Sheets (fire and forget)
     const { syncToGoogleSheets } = require('./ai-bot');
@@ -778,7 +778,7 @@ app.post('/api/desktop/reminders/:id/done', desktopApiAuth, async (req, res) => 
       token:  process.env.GOOGLE_SHEET_TOKEN || '',
       action: 'reminder_update',
       id:     id,
-      status: 'Selesai',
+      status: 'Tugas Selesai',
     });
     res.json({ success: true });
   } catch (err) {
@@ -979,7 +979,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 // ============================================================
 setInterval(async () => {
   try {
-    const [rows] = await db.query("SELECT id, isi FROM bot_reminder WHERE status='Pending' AND waktu <= NOW()");
+    const [rows] = await db.query("SELECT id, isi FROM bot_reminder WHERE status='Menunggu Waktu' AND waktu <= NOW()");
     if (rows.length === 0) return;
     
     const ownerNumber = process.env.OWNER_WA_NUMBER;
@@ -993,7 +993,7 @@ setInterval(async () => {
     for (const row of rows) {
       try {
         await client.sendMessage(waId, `⏰ *Reminder!*\n${row.isi}`);
-        await db.query("UPDATE bot_reminder SET status='Terkirim' WHERE id=?", [row.id]);
+        await db.query("UPDATE bot_reminder SET status='Sudah Diingatkan' WHERE id=?", [row.id]);
       } catch (err) {
         console.error("Gagal kirim reminder id", row.id, err.message);
       }

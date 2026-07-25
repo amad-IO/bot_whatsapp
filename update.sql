@@ -1,0 +1,1 @@
+ALTER TABLE bot_reminder MODIFY COLUMN status VARCHAR(50) DEFAULT 'Menunggu Waktu'; UPDATE bot_reminder SET status='Menunggu Waktu' WHERE status='Pending'; UPDATE bot_reminder SET status='Sudah Diingatkan' WHERE status='Terkirim'; UPDATE bot_reminder SET status='Tugas Selesai' WHERE status='Selesai';

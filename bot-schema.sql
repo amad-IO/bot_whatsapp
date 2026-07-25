@@ -19,6 +19,6 @@ CREATE TABLE IF NOT EXISTS bot_reminder (
   id INT AUTO_INCREMENT PRIMARY KEY,
   isi TEXT NOT NULL,
   waktu DATETIME NOT NULL,
-  status ENUM('Pending', 'Terkirim', 'Selesai') DEFAULT 'Pending',
+  status VARCHAR(50) DEFAULT 'Menunggu Waktu',
   created_at DATETIME DEFAULT NOW()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -283,7 +283,7 @@ async function tambahReminder(ai) {
 
   const [result] = await db.query(
     'INSERT INTO bot_reminder (isi, waktu, status) VALUES (?, ?, ?)',
-    [ai.isi, mysqlTime, 'Pending']
+    [ai.isi, mysqlTime, 'Menunggu Waktu']
   );
 
   syncToGoogleSheets({
@@ -292,7 +292,7 @@ async function tambahReminder(ai) {
     id:      result.insertId,
     isi:     ai.isi,
     waktu:   mysqlTime,
-    status:  'Pending',
+    status:  'Menunggu Waktu',
   });
 
   eventBus.emit('reminders-updated');
@@ -304,7 +304,7 @@ async function tambahReminder(ai) {
 }
 
 async function listReminder() {
-  const [rows] = await db.query('SELECT isi, waktu FROM bot_reminder WHERE status = "Pending" ORDER BY waktu ASC');
+  const [rows] = await db.query('SELECT isi, waktu FROM bot_reminder WHERE status = "Menunggu Waktu" ORDER BY waktu ASC');
   if (rows.length === 0) return "✅ Gak ada reminder yang pending. Kamu bebas!";
 
   const pending = rows.map(r => {
@@ -319,15 +319,15 @@ async function selesaiReminder(ai) {
   if (!ai.keyword) return "ℹ️ Reminder tidak ditemukan.";
   
   const kw = `%${ai.keyword.toLowerCase()}%`;
-  const [rows] = await db.query('SELECT id, isi FROM bot_reminder WHERE status = "Pending" AND LOWER(isi) LIKE ? LIMIT 1', [kw]);
+  const [rows] = await db.query('SELECT id, isi FROM bot_reminder WHERE status = "Menunggu Waktu" AND LOWER(isi) LIKE ? LIMIT 1', [kw]);
   
   if (rows.length > 0) {
-    await db.query('UPDATE bot_reminder SET status = "Selesai" WHERE id = ?', [rows[0].id]);
+    await db.query('UPDATE bot_reminder SET status = "Tugas Selesai" WHERE id = ?', [rows[0].id]);
     syncToGoogleSheets({
       token:  process.env.GOOGLE_SHEET_TOKEN || '',
       action: 'reminder_update',
       id:     rows[0].id,
-      status: 'Selesai',
+      status: 'Tugas Selesai',
     });
     eventBus.emit('reminders-updated');
     return `✅ Reminder "${rows[0].isi}" ditandai selesai.`;
