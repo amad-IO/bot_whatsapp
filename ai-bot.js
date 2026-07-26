@@ -196,7 +196,7 @@ async function prosesTransaksi(ai) {
     tanggal:         businessDateStr,
     waktu_transaksi: mysqlWaktu,
     kategori:        ai.cat,
-    nominal:         `Rp ${fmt(ai.amt)}`,
+    nominal:         ai.amt,
     tipe:            ai.type,
     rekening:        rekening,
     keterangan:      ai.pesan || '-'
