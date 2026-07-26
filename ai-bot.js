@@ -1,5 +1,8 @@
+const fs = require('fs');
+const path = require('path');
 const db = require('./db');
 const eventBus = require('./eventBus');
+let lastGuest = { number: '', name: '' };
 
 const MAX_RETRIES = 2;
 
@@ -127,8 +130,10 @@ async function deteksiIntent(text) {
     "- tambah_reminder: user wants to be reminded of something at a specific time\n" +
     "- list_reminder: user asks to see pending reminders or todo list\n" +
     "- selesai_reminder: user marks a reminder/task as done\n" +
+    "- balas_tamu: user asks to reply or send a message back to a guest (e.g. 'balas ke dia...', 'tolong balas: makasih')\n" +
     "- chat_bebas: anything else (general question, casual chat, opinion, explanation)\n\n" +
     "For transaksi_keuangan:\n" +
+    "  - pesan: nama barang atau keterangan transaksi (contoh: 'frutie', 'udang bakar', 'bayar hutang', dll)\n" +
     "  - cat: category in Bahasa Indonesia (Makanan, Transport, Kesehatan, Hiburan, Pinjaman, Gaji, dll)\n" +
     "  - amt: integer amount (parse '10rb'=10000, '1.5jt'=1500000, '500k'=500000)\n" +
     "  - type: 'Masuk' (receive money) or 'Keluar' (spend/lend money)\n" +
@@ -141,6 +146,7 @@ async function deteksiIntent(text) {
     "  - isi: reminder text\n" +
     "  - waktu: resolve relative time to yyyy-MM-dd HH:mm\n" +
     "For selesai_reminder and list_reminder: keyword (text to match, or null for list)\n" +
+    "For balas_tamu: pesan (the exact message to send to the guest)\n" +
     "For chat_bebas: pesan (original message)\n\n" +
     "Output format (PURE JSON only, null for unused fields):\n" +
     '{"intent":"string","cat":"string|null","amt":number|null,"type":"string|null","rek":"string|null",' +
@@ -337,7 +343,18 @@ async function selesaiReminder(ai) {
 }
 
 async function jawabChatBebas(pertanyaan) {
-  const sys = "Kamu adalah asisten pribadi yang ramah, singkat, dan membantu. Jawab dalam Bahasa Indonesia yang santai tapi jelas.";
+  let sys = "Kamu adalah asisten pribadi yang ramah, singkat, dan membantu. Jawab dalam Bahasa Indonesia yang santai tapi jelas.";
+  try {
+    const personaPath = path.join(__dirname, 'persona.txt');
+    if (fs.existsSync(personaPath)) {
+      const personaContent = fs.readFileSync(personaPath, 'utf-8').trim();
+      if (personaContent) {
+        sys = personaContent;
+      }
+    }
+  } catch (error) {
+    console.error("Gagal membaca persona.txt:", error);
+  }
   return await panggilGroqText(sys, pertanyaan);
 }
 
@@ -348,13 +365,95 @@ async function eksekusiIntent(intent, pesanAsli) {
     case "tambah_reminder":    return await tambahReminder(intent);
     case "list_reminder":      return await listReminder();
     case "selesai_reminder":   return await selesaiReminder(intent);
+    case "balas_tamu":
+      if (!lastGuest.number) return "⚠️ Tidak ada data tamu terakhir yang bisa dibalas.";
+      return { 
+        replyToGuest: intent.pesan, 
+        targetNumber: lastGuest.number, 
+        replyToSender: `✅ Pesan: "${intent.pesan}" telah dikirim ke ${lastGuest.name || lastGuest.number}.`
+      };
     case "chat_bebas":
     default:
       return await jawabChatBebas(intent.pesan || pesanAsli);
   }
 }
 
-async function processBotMessage(pesan) {
+async function processGuestMessage(pesan, senderName, senderNumber) {
+  let systemPrompt = "";
+  if (senderName === "Belum Diketahui") {
+    systemPrompt = `Kamu adalah Timo, asisten pribadi Ahmad. Yang berbicara BUKAN Ahmad, dan kamu BELUM TAHU namanya.
+1. Jika tamu memberikan namanya (contoh: "aku Budi", "nama saya Budi"), keluarkan JSON: {"intent": "simpan_kontak", "nama_tamu": "Budi", "reply_to_guest": "Salam kenal, Budi! Ada yang bisa saya bantu atau ingin titip pesan untuk Kak Ahmad?"}
+2. Jika tamu mengajak ngobrol / menyapa TANPA menyebutkan nama, keluarkan JSON: {"intent": "chat", "reply_to_guest": "Halo! Aku Timo, asisten pribadi Kak Ahmad. Maaf, dengan siapa ini?"}
+3. Jika tamu mencoba mengakses fitur pengingat atau keuangan, tolak sopan. JSON: {"intent": "chat", "reply_to_guest": "Maaf, fitur ini khusus Kak Ahmad. Boleh saya tahu nama Anda?"}
+Selalu gunakan bahasa Indonesia yang ramah. HANYA keluarkan JSON.`;
+  } else {
+    systemPrompt = `Kamu adalah Timo, asisten pribadi Ahmad. Yang berbicara BUKAN Ahmad, melainkan tamu bernama ${senderName}.
+1. Jika tamu menitipkan pesan untuk Ahmad (contoh: "tolong sampaikan...", "bilang ke ahmad..."), keluarkan format JSON: {"intent": "forward", "pesan": "pesan yang dititipkan", "reply_to_guest": "Baik, pesan sudah saya sampaikan ke Ahmad."}
+2. Jika tamu hanya menyapa atau ngobrol, keluarkan JSON: {"intent": "chat", "reply_to_guest": "Halo Kak ${senderName}, aku Timo asisten Kak Ahmad. Ada titipan pesan untuk beliau?"}
+3. Jika tamu mencoba mengakses fitur pengingat atau keuangan, tolak dengan sopan. JSON: {"intent": "chat", "reply_to_guest": "Maaf Kak ${senderName}, fitur asisten ini hanya khusus untuk Kak Ahmad."}
+Selalu gunakan bahasa Indonesia yang ramah dan sopan. HANYA keluarkan JSON yang valid.`;
+  }
+
+  try {
+    const result = await panggilGroqJson(systemPrompt, pesan, 300);
+    
+    if (result.intent === 'simpan_kontak' && result.nama_tamu) {
+      // Simpan ke database
+      await db.query('INSERT INTO bot_kontak (nomor, nama) VALUES (?, ?) ON DUPLICATE KEY UPDATE nama = ?', [senderNumber, result.nama_tamu, result.nama_tamu]);
+      
+      // Sinkronisasi ke Google Sheets
+      syncToGoogleSheets({
+        token:  process.env.GOOGLE_SHEET_TOKEN || '',
+        action: 'kontak_baru',
+        nomor:  senderNumber,
+        nama:   result.nama_tamu
+      });
+      
+      setLastGuest(senderNumber, result.nama_tamu);
+      return { replyToSender: result.reply_to_guest };
+    }
+    
+    if (result.intent === 'forward') {
+      const actualName = (senderName === "Belum Diketahui") ? "Seseorang" : senderName;
+      const forwardMsg = `📩 *Ada titipan pesan nih*\n\n"${result.pesan}"\n\nDari: ${actualName} (${senderNumber})`;
+      return {
+        replyToSender: result.reply_to_guest,
+        forwardToOwner: forwardMsg
+      };
+    } else {
+      return {
+        replyToSender: result.reply_to_guest
+      };
+    }
+  } catch (err) {
+    console.error("Guest AI Error:", err);
+    return { replyToSender: "Maaf, asisten Timo sedang mengalami gangguan teknis." };
+  }
+}
+
+function setLastGuest(number, name) {
+  lastGuest.number = number;
+  lastGuest.name = name;
+}
+
+async function processBotMessage(pesan, isOwner = true, pushName = '', senderNumber = '') {
+  if (!isOwner) {
+    let finalName = pushName;
+    try {
+      const [rows] = await db.query('SELECT nama FROM bot_kontak WHERE nomor = ?', [senderNumber]);
+      if (rows.length > 0) {
+        finalName = rows[0].nama;
+      } else {
+        finalName = "Belum Diketahui";
+      }
+    } catch (e) {
+      console.error("Gagal cek bot_kontak:", e);
+    }
+    
+    setLastGuest(senderNumber, finalName);
+    return await processGuestMessage(pesan, finalName, senderNumber);
+  }
+
   if (/^(help|bantuan)$/i.test(pesan.trim())) {
     return (
       "*Asisten Pribadi*\n━━━━━━━━━━━━━━━━━━\n" +
@@ -377,5 +476,6 @@ async function processBotMessage(pesan) {
 module.exports = {
   processBotMessage,
   syncToGoogleSheets,
-  panggilGroqText
+  panggilGroqText,
+  setLastGuest
 };

@@ -16,6 +16,22 @@ const db = require('./db');
 const eventBus = require('./eventBus');
 const cron = require('node-cron');
 
+// Inisialisasi Tabel Kontak
+(async () => {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS bot_kontak (
+        nomor VARCHAR(20) PRIMARY KEY,
+        nama VARCHAR(100) NOT NULL,
+        created_at DATETIME DEFAULT NOW()
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    console.log('[DB] Tabel bot_kontak dipastikan ada.');
+  } catch (err) {
+    console.error('[DB] Gagal membuat tabel bot_kontak:', err.message);
+  }
+})();
+
 // ============================================================
 //  CONFIG
 // ============================================================
@@ -223,16 +239,16 @@ function connectWhatsApp(id) {
 
     console.log(`[DEBUG] fromNum=${fromNum} toNum=${toNum} ownerNumber=${ownerNumber} fromMe=${msg.fromMe}`);
 
-    // Jika OWNER_WA_NUMBER diset, hanya proses pesan dari/ke owner
+    let ownerClean = '';
+    let isOwner = false;
+    
+    // Validasi Owner
     if (ownerNumber) {
-      const ownerClean = ownerNumber.replace(/^0/, '62'); // normalisasi 08xx -> 628xx
-      // Pesan masuk dari orang lain ke bot: fromNum harus owner
-      if (!msg.fromMe && fromNum !== ownerClean) {
-        console.log(`[DEBUG] Ignored: bukan dari owner (${fromNum} != ${ownerClean})`);
-        return;
-      }
-      // Pesan keluar dari bot ke orang lain: abaikan (bukan reply kita)
+      ownerClean = ownerNumber.replace(/^0/, '62');
       if (msg.fromMe && toNum !== ownerClean) return;
+      isOwner = (fromNum === ownerClean);
+    } else {
+      isOwner = true; // Jika tidak ada setting owner, anggap semua owner
     }
 
     console.log(`[${id}] Pesan masuk dari ${fromNum}: ${msg.body}`);
@@ -255,8 +271,28 @@ function connectWhatsApp(id) {
     try {
       if (AUTO_BOT_AI_ENABLED) {
         const aiBot = require('./ai-bot');
-        const reply = await aiBot.processBotMessage(msg.body);
-        await msg.reply(reply + '\u200B'); // Sisipkan invisible char agar bot tahu ini balasannya sendiri
+        const contact = await msg.getContact();
+        const pushName = contact.pushname || contact.name || 'Tamu';
+        
+        const aiResult = await aiBot.processBotMessage(msg.body, isOwner, pushName, fromNum);
+        
+        if (typeof aiResult === 'string') {
+          await msg.reply(aiResult + '\u200B');
+        } else if (typeof aiResult === 'object') {
+          // Balas ke Sender (Tamu atau Owner)
+          if (aiResult.replyToSender) {
+            await msg.reply(aiResult.replyToSender + '\u200B');
+          }
+          // Notif ke Owner (Jika tamu titip pesan)
+          if (aiResult.forwardToOwner && ownerClean) {
+            await client.sendMessage(ownerClean + '@c.us', aiResult.forwardToOwner + '\u200B');
+          }
+          // Balas dari Owner ke Tamu (Saat owner suruh balas tamu)
+          if (aiResult.replyToGuest && aiResult.targetNumber) {
+            const finalReply = `*Pesan dari Ahmad:*\n"${aiResult.replyToGuest}"`;
+            await client.sendMessage(aiResult.targetNumber + '@c.us', finalReply + '\u200B');
+          }
+        }
       } else if (AUTO_REPLY_ENABLED && !isOwner) {
         await msg.reply('Pesan sudah diterima. Terima kasih 🙏');
       }
@@ -733,7 +769,7 @@ const desktopApiAuth = (req, res, next) => {
 
 app.get('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id, isi, waktu, status FROM bot_reminder WHERE status = "Menunggu Waktu" ORDER BY waktu ASC');
+    const [rows] = await db.query('SELECT id, isi, waktu, status FROM bot_reminder WHERE status IN ("Pending", "Menunggu Waktu") ORDER BY waktu ASC');
     res.json({ success: true, data: rows });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -907,7 +943,8 @@ app.post('/api/webhook/sheets', async (req, res) => {
         }
       }
 
-      await db.query(`UPDATE bot_transaksi SET ?? = ? WHERE id = ?`, [field, finalValue, id]);
+      const dbField = field === 'keterangan' ? 'pesan' : field;
+      await db.query(`UPDATE bot_transaksi SET ?? = ? WHERE id = ?`, [dbField, finalValue, id]);
       
       console.log(`[Sheets Webhook] Transaksi #${id} diupdate: ${field} = ${finalValue}`);
       return res.json({ success: true, message: `Transaksi #${id} field '${field}' diupdate ke MySQL` });
@@ -979,7 +1016,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 // ============================================================
 setInterval(async () => {
   try {
-    const [rows] = await db.query("SELECT id, isi FROM bot_reminder WHERE status='Menunggu Waktu' AND waktu <= NOW()");
+    const [rows] = await db.query("SELECT id, isi FROM bot_reminder WHERE status IN ('Pending', 'Menunggu Waktu') AND waktu <= NOW()");
     if (rows.length === 0) return;
     
     const ownerNumber = process.env.OWNER_WA_NUMBER;
@@ -989,11 +1026,19 @@ setInterval(async () => {
     if (clientIds.length === 0) return;
     const client = clients[clientIds[0]];
     const waId = ownerNumber + '@c.us';
+    const { syncToGoogleSheets } = require('./ai-bot');
 
     for (const row of rows) {
       try {
         await client.sendMessage(waId, `⏰ *Reminder!*\n${row.isi}`);
-        await db.query("UPDATE bot_reminder SET status='Sudah Diingatkan' WHERE id=?", [row.id]);
+        await db.query("UPDATE bot_reminder SET status='Terkirim' WHERE id=?", [row.id]);
+        
+        syncToGoogleSheets({
+          token:   process.env.GOOGLE_SHEET_TOKEN || '',
+          action:  'reminder_update',
+          id:      row.id,
+          status:  'Terkirim'
+        }).catch(e => console.error('Gagal sync reminder ke sheet', e));
       } catch (err) {
         console.error("Gagal kirim reminder id", row.id, err.message);
       }
