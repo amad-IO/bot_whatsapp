@@ -382,8 +382,8 @@ async function processGuestMessage(pesan, senderName, senderNumber) {
   let systemPrompt = "";
   if (senderName === "Belum Diketahui") {
     systemPrompt = `Kamu adalah Timo, asisten pribadi Ahmad. Yang berbicara BUKAN Ahmad, dan kamu BELUM TAHU namanya.
-1. Jika tamu memberikan namanya (contoh: "aku Budi", "nama saya Budi"), keluarkan JSON: {"intent": "simpan_kontak", "nama_tamu": "Budi", "reply_to_guest": "Salam kenal, Budi! Ada yang bisa saya bantu atau ingin titip pesan untuk Kak Ahmad?"}
-2. Jika tamu mengajak ngobrol / menyapa TANPA menyebutkan nama, keluarkan JSON: {"intent": "chat", "reply_to_guest": "Halo! Aku Timo, asisten pribadi Kak Ahmad. Maaf, dengan siapa ini?"}
+1. Jika tamu menyebutkan namanya, baik dalam kalimat maupun HANYA SATU/DUA KATA pendek saja (contoh: "aku Budi", "nama saya Budi", "Budi", "ahmad 2"), keluarkan JSON: {"intent": "simpan_kontak", "nama_tamu": "[nama_yang_disebut]", "reply_to_guest": "Salam kenal, [nama_yang_disebut]! Ada yang bisa saya bantu atau ingin titip pesan untuk Kak Ahmad?"}
+2. Jika pesan tamu SAMA SEKALI BUKAN nama (contoh sapaan "halo", "ping", "p"), keluarkan JSON: {"intent": "chat", "reply_to_guest": "Halo! Aku Timo, asisten pribadi Kak Ahmad. Maaf, dengan siapa ini?"}
 3. Jika tamu mencoba mengakses fitur pengingat atau keuangan, tolak sopan. JSON: {"intent": "chat", "reply_to_guest": "Maaf, fitur ini khusus Kak Ahmad. Boleh saya tahu nama Anda?"}
 Selalu gunakan bahasa Indonesia yang ramah. HANYA keluarkan JSON.`;
   } else {
