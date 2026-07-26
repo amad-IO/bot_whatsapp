@@ -733,7 +733,7 @@ const desktopApiAuth = (req, res, next) => {
 
 app.get('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id, isi, waktu, status FROM bot_reminder WHERE status = "Pending" ORDER BY waktu ASC');
+    const [rows] = await db.query('SELECT id, isi, waktu, status FROM bot_reminder WHERE status IN ("Pending", "Menunggu Waktu") ORDER BY waktu ASC');
     res.json({ success: true, data: rows });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -907,7 +907,8 @@ app.post('/api/webhook/sheets', async (req, res) => {
         }
       }
 
-      await db.query(`UPDATE bot_transaksi SET ?? = ? WHERE id = ?`, [field, finalValue, id]);
+      const dbField = field === 'keterangan' ? 'pesan' : field;
+      await db.query(`UPDATE bot_transaksi SET ?? = ? WHERE id = ?`, [dbField, finalValue, id]);
       
       console.log(`[Sheets Webhook] Transaksi #${id} diupdate: ${field} = ${finalValue}`);
       return res.json({ success: true, message: `Transaksi #${id} field '${field}' diupdate ke MySQL` });
@@ -979,7 +980,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 // ============================================================
 setInterval(async () => {
   try {
-    const [rows] = await db.query("SELECT id, isi FROM bot_reminder WHERE status='Pending' AND waktu <= NOW()");
+    const [rows] = await db.query("SELECT id, isi FROM bot_reminder WHERE status IN ('Pending', 'Menunggu Waktu') AND waktu <= NOW()");
     if (rows.length === 0) return;
     
     const ownerNumber = process.env.OWNER_WA_NUMBER;
@@ -989,11 +990,19 @@ setInterval(async () => {
     if (clientIds.length === 0) return;
     const client = clients[clientIds[0]];
     const waId = ownerNumber + '@c.us';
+    const { syncToGoogleSheets } = require('./ai-bot');
 
     for (const row of rows) {
       try {
         await client.sendMessage(waId, `⏰ *Reminder!*\n${row.isi}`);
         await db.query("UPDATE bot_reminder SET status='Terkirim' WHERE id=?", [row.id]);
+        
+        syncToGoogleSheets({
+          token:   process.env.GOOGLE_SHEET_TOKEN || '',
+          action:  'reminder_update',
+          id:      row.id,
+          status:  'Terkirim'
+        }).catch(e => console.error('Gagal sync reminder ke sheet', e));
       } catch (err) {
         console.error("Gagal kirim reminder id", row.id, err.message);
       }
