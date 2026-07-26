@@ -227,6 +227,9 @@ function connectWhatsApp(id) {
     // Abaikan pesan yang dikirim bot sendiri (tandai dengan zero-width space)
     if (msg.fromMe && msg.body.includes('\u200B')) return;
 
+    // Abaikan pesan kosong (update system/presence)
+    if (!msg.body || msg.body.trim() === '') return;
+
     // Abaikan pesan dari grup
     if (msg.from.includes('@g.us')) return;
 
