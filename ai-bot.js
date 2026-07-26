@@ -129,6 +129,7 @@ async function deteksiIntent(text) {
     "- selesai_reminder: user marks a reminder/task as done\n" +
     "- chat_bebas: anything else (general question, casual chat, opinion, explanation)\n\n" +
     "For transaksi_keuangan:\n" +
+    "  - pesan: nama barang atau keterangan transaksi (contoh: 'frutie', 'udang bakar', 'bayar hutang', dll)\n" +
     "  - cat: category in Bahasa Indonesia (Makanan, Transport, Kesehatan, Hiburan, Pinjaman, Gaji, dll)\n" +
     "  - amt: integer amount (parse '10rb'=10000, '1.5jt'=1500000, '500k'=500000)\n" +
     "  - type: 'Masuk' (receive money) or 'Keluar' (spend/lend money)\n" +
@@ -195,7 +196,7 @@ async function prosesTransaksi(ai) {
     tanggal:         businessDateStr,
     waktu_transaksi: mysqlWaktu,
     kategori:        ai.cat,
-    nominal:         ai.amt,
+    nominal:         `Rp ${fmt(ai.amt)}`,
     tipe:            ai.type,
     rekening:        rekening,
     keterangan:      ai.pesan || '-'
