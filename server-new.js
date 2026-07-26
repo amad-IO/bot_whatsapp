@@ -16,6 +16,22 @@ const db = require('./db');
 const eventBus = require('./eventBus');
 const cron = require('node-cron');
 
+// Inisialisasi Tabel Kontak
+(async () => {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS bot_kontak (
+        nomor VARCHAR(20) PRIMARY KEY,
+        nama VARCHAR(100) NOT NULL,
+        created_at DATETIME DEFAULT NOW()
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    console.log('[DB] Tabel bot_kontak dipastikan ada.');
+  } catch (err) {
+    console.error('[DB] Gagal membuat tabel bot_kontak:', err.message);
+  }
+})();
+
 // ============================================================
 //  CONFIG
 // ============================================================
@@ -223,16 +239,16 @@ function connectWhatsApp(id) {
 
     console.log(`[DEBUG] fromNum=${fromNum} toNum=${toNum} ownerNumber=${ownerNumber} fromMe=${msg.fromMe}`);
 
-    // Jika OWNER_WA_NUMBER diset, hanya proses pesan dari/ke owner
+    let ownerClean = '';
+    let isOwner = false;
+    
+    // Validasi Owner
     if (ownerNumber) {
-      const ownerClean = ownerNumber.replace(/^0/, '62'); // normalisasi 08xx -> 628xx
-      // Pesan masuk dari orang lain ke bot: fromNum harus owner
-      if (!msg.fromMe && fromNum !== ownerClean) {
-        console.log(`[DEBUG] Ignored: bukan dari owner (${fromNum} != ${ownerClean})`);
-        return;
-      }
-      // Pesan keluar dari bot ke orang lain: abaikan (bukan reply kita)
+      ownerClean = ownerNumber.replace(/^0/, '62');
       if (msg.fromMe && toNum !== ownerClean) return;
+      isOwner = (fromNum === ownerClean);
+    } else {
+      isOwner = true; // Jika tidak ada setting owner, anggap semua owner
     }
 
     console.log(`[${id}] Pesan masuk dari ${fromNum}: ${msg.body}`);
@@ -255,8 +271,28 @@ function connectWhatsApp(id) {
     try {
       if (AUTO_BOT_AI_ENABLED) {
         const aiBot = require('./ai-bot');
-        const reply = await aiBot.processBotMessage(msg.body);
-        await msg.reply(reply + '\u200B'); // Sisipkan invisible char agar bot tahu ini balasannya sendiri
+        const contact = await msg.getContact();
+        const pushName = contact.pushname || contact.name || 'Tamu';
+        
+        const aiResult = await aiBot.processBotMessage(msg.body, isOwner, pushName, fromNum);
+        
+        if (typeof aiResult === 'string') {
+          await msg.reply(aiResult + '\u200B');
+        } else if (typeof aiResult === 'object') {
+          // Balas ke Sender (Tamu atau Owner)
+          if (aiResult.replyToSender) {
+            await msg.reply(aiResult.replyToSender + '\u200B');
+          }
+          // Notif ke Owner (Jika tamu titip pesan)
+          if (aiResult.forwardToOwner && ownerClean) {
+            await client.sendMessage(ownerClean + '@c.us', aiResult.forwardToOwner + '\u200B');
+          }
+          // Balas dari Owner ke Tamu (Saat owner suruh balas tamu)
+          if (aiResult.replyToGuest && aiResult.targetNumber) {
+            const finalReply = `*Pesan dari Ahmad:*\n"${aiResult.replyToGuest}"`;
+            await client.sendMessage(aiResult.targetNumber + '@c.us', finalReply + '\u200B');
+          }
+        }
       } else if (AUTO_REPLY_ENABLED && !isOwner) {
         await msg.reply('Pesan sudah diterima. Terima kasih 🙏');
       }
