@@ -174,10 +174,15 @@ async function prosesTransaksi(ai) {
   } else {
     waktuTransaksi = new Date();
   }
-  const mysqlWaktu = waktuTransaksi.toISOString().slice(0, 19).replace('T', ' ');
+  
+  // Tambahkan offset +7 jam (WIB) agar toISOString menghasilkan waktu lokal yang tepat
+  const offsetWIB = 7 * 60 * 60 * 1000;
+  const localWaktu = new Date(waktuTransaksi.getTime() + offsetWIB);
 
-  // Perhitungan Tanggal Bisnis (Mundur 6 jam)
-  const businessDateObj = new Date(waktuTransaksi.getTime() - (6 * 60 * 60 * 1000));
+  const mysqlWaktu = localWaktu.toISOString().slice(0, 19).replace('T', ' ');
+
+  // Perhitungan Tanggal Bisnis (Mundur 6 jam dari Waktu Lokal)
+  const businessDateObj = new Date(localWaktu.getTime() - (6 * 60 * 60 * 1000));
   const businessDateStr = businessDateObj.toISOString().slice(0, 10);
   
   // Start & End hari bisnis (jam 06:00 sampai 05:59 besoknya)
