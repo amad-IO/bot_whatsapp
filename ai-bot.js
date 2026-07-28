@@ -125,8 +125,10 @@ async function deteksiIntent(text) {
     `Waktu sekarang: ${nowStr} (WIB, format yyyy-MM-dd HH:mm)\n` +
     `Classify this Indonesian message: "${text}"\n\n` +
     "Possible intents:\n" +
-    "- transaksi_keuangan: user mentions any money movement (beli/bayar/jajan/dapat/gajian/pinjem/nombok/nraktir/dll)\n" +
-    "- laporan_keuangan: user asks financial report/summary for any time period\n" +
+    "- transaksi_keuangan: user mentions any money movement (beli/bayar/jajan/dapat/gajian/pinjem/nombok/nraktir/dll) TO BE RECORDED\n" +
+    "- laporan_keuangan: user asks for a standard financial report/summary for a period\n" +
+    "- tanya_database_transaksi: user asks what they bought, past transactions history, or specific expenses (e.g. 'hari ini belanja apa saja?', 'kemarin habis berapa untuk makan?')\n" +
+    "- tanya_database_kontak: user asks about contacts saved in database (e.g. 'ada kontak siapa saja?', 'kamu tau nomor si A?')\n" +
     "- tambah_reminder: user wants to be reminded of something at a specific time\n" +
     "- list_reminder: user asks to see pending reminders or todo list\n" +
     "- selesai_reminder: user marks a reminder/task as done\n" +
@@ -142,6 +144,10 @@ async function deteksiIntent(text) {
     "For laporan_keuangan:\n" +
     "  - periode: 'harian' (today) | 'mingguan' (this week) | 'bulanan' (this month, default)\n" +
     "  - rek: specific account name if user asks per-account report, else null\n" +
+    "For tanya_database_transaksi:\n" +
+    "  - periode: extract time filter ('hari ini', 'kemarin', 'minggu ini', 'bulan ini', 'semua' default)\n" +
+    "For tanya_database_kontak:\n" +
+    "  - keyword: name of the person searched, or null if asking for all contacts\n" +
     "For tambah_reminder:\n" +
     "  - isi: reminder text\n" +
     "  - waktu: resolve relative time to yyyy-MM-dd HH:mm\n" +
@@ -347,6 +353,45 @@ async function selesaiReminder(ai) {
   return `ℹ️ Gak nemu reminder pending yang cocok dengan "${ai.keyword}".`;
 }
 
+async function tanyaDatabaseTransaksi(pesanAsli, periode) {
+  let sql = 'SELECT pesan, kategori, jumlah, tipe, DATE_FORMAT(waktu_transaksi, "%Y-%m-%d %H:%i") as waktu FROM bot_transaksi';
+  let params = [];
+  
+  if (periode === 'hari ini' || periode === 'harian') {
+    sql += ' WHERE DATE(waktu_transaksi) = CURDATE()';
+  } else if (periode === 'kemarin') {
+    sql += ' WHERE DATE(waktu_transaksi) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)';
+  } else if (periode === 'minggu ini' || periode === 'mingguan') {
+    sql += ' WHERE waktu_transaksi >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+  } else if (periode === 'bulan ini' || periode === 'bulanan') {
+    sql += ' WHERE MONTH(waktu_transaksi) = MONTH(CURRENT_DATE()) AND YEAR(waktu_transaksi) = YEAR(CURRENT_DATE())';
+  }
+  sql += ' ORDER BY waktu_transaksi DESC LIMIT 50';
+
+  const [rows] = await db.query(sql, params);
+  const dataCtx = rows.length ? JSON.stringify(rows) : "Tidak ada data transaksi di periode ini.";
+  
+  const sys = `Kamu adalah asisten keuangan pribadi. Jawab pertanyaan user berdasarkan data transaksi dari database berikut:\n${dataCtx}\nJawab dengan ramah, santai, dan jelas tanpa menampilkan JSON mentah. Rangkum datanya sesuai pertanyaan.`;
+  return await panggilGroqText(sys, pesanAsli);
+}
+
+async function tanyaDatabaseKontak(pesanAsli, keyword) {
+  let sql = 'SELECT nama, nomor FROM bot_kontak';
+  let params = [];
+  
+  if (keyword && keyword !== 'null' && keyword !== '') {
+    sql += ' WHERE nama LIKE ?';
+    params = [`%${keyword}%`];
+  }
+  sql += ' LIMIT 100';
+
+  const [rows] = await db.query(sql, params);
+  const dataCtx = rows.length ? JSON.stringify(rows) : "Tidak ada kontak yang cocok di database.";
+  
+  const sys = `Kamu adalah asisten pribadi. Jawab pertanyaan user berdasarkan data kontak dari database berikut:\n${dataCtx}\nJawab dengan santai, ramah, dan ringkas. Jika user mencari nomor tertentu, sebutkan nomornya jika ada.`;
+  return await panggilGroqText(sys, pesanAsli);
+}
+
 async function jawabChatBebas(pertanyaan) {
   let sys = "Kamu adalah asisten pribadi yang ramah, singkat, dan membantu. Jawab dalam Bahasa Indonesia yang santai tapi jelas.";
   try {
@@ -367,6 +412,8 @@ async function eksekusiIntent(intent, pesanAsli) {
   switch (intent.intent) {
     case "transaksi_keuangan": return await prosesTransaksi(intent);
     case "laporan_keuangan":   return await getLaporan(intent.periode || 'bulanan', intent.rek || null);
+    case "tanya_database_transaksi": return await tanyaDatabaseTransaksi(intent.pesan || pesanAsli, intent.periode);
+    case "tanya_database_kontak": return await tanyaDatabaseKontak(intent.pesan || pesanAsli, intent.keyword);
     case "tambah_reminder":    return await tambahReminder(intent);
     case "list_reminder":      return await listReminder();
     case "selesai_reminder":   return await selesaiReminder(intent);
