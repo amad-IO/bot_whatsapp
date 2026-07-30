@@ -1087,15 +1087,15 @@ cron.schedule('0 8 * * *', async () => {
 
     let listBesar = '';
     if (itemsBesar.length > 0) {
-      listBesar = itemsBesar.map(i => `- ${i.kategori} (Rp ${i.jumlah.toLocaleString('id-ID')})`).join('\\n');
+      listBesar = itemsBesar.map(i => `- ${i.kategori} (Rp ${i.jumlah.toLocaleString('id-ID')})`).join('\n');
     }
 
-    let sysPrompt = "Kamu adalah asisten pribadi bahasa Indonesia yang gaul, seru, dan santai. Tugasmu memberikan laporan keuangan.";
-    let userPrompt = `Beri tahu saya laporan keuangan kemarin. Total pengeluaran: Rp ${totalKemarin.toLocaleString('id-ID')}. `;
+    let sysPrompt = "Anda adalah asisten pribadi yang profesional, singkat, dan berorientasi pada data. Tugas Anda memberikan laporan keuangan tanpa basa-basi, tanpa emoji, dan dengan gaya bahasa formal/paragraf biasa. Gunakan bullet points untuk daftar.";
+    let userPrompt = `Buatkan laporan keuangan harian. Total pengeluaran kemarin: Rp ${totalKemarin.toLocaleString('id-ID')}.\n`;
     if (listBesar) {
-      userPrompt += `Pengeluaran besar (>45rb) yang harus dinotis:\\n${listBesar}. Nasihati saya santai soal pengeluaran ini.`;
+      userPrompt += `Sertakan rincian pengeluaran besar (di atas Rp 45.000) berikut ke dalam laporan:\n${listBesar}\nBerikan catatan singkat dan profesional di akhir.`;
     } else {
-      userPrompt += `Tidak ada pengeluaran besar (di atas 45rb) kemarin, puji saya dengan santai.`;
+      userPrompt += `Tidak ada pengeluaran di atas Rp 45.000 kemarin. Berikan apresiasi singkat dan profesional bahwa pengeluaran terkendali.`;
     }
 
     // Jika ini tanggal 1, berikan juga Laporan Bulan Lalu
@@ -1110,11 +1110,11 @@ cron.schedule('0 8 * * *', async () => {
         [startMonth, endMonth]
       );
       const totalBulanLalu = Number(rowBulanLalu[0].total) || 0;
-      userPrompt += `\\n\\nOh ya, ini tanggal 1! Tolong kasih tahu juga bahwa total pengeluaran SUTU BULAN PENUH kemarin adalah Rp ${totalBulanLalu.toLocaleString('id-ID')}. Sampaikan dengan gaya heboh atau kaget (tergantung nominalnya, kalau di atas 2 juta agak omelin).`;
+      userPrompt += `\n\nTambahkan informasi ini di paragraf terpisah: Hari ini adalah tanggal 1. Total pengeluaran bulan lalu adalah Rp ${totalBulanLalu.toLocaleString('id-ID')}. Berikan evaluasi singkat mengenai pengeluaran bulan lalu secara profesional.`;
     }
 
     const aiMessage = await aiBot.panggilGroqText(sysPrompt, userPrompt);
-    await client.sendMessage(waId, "☀️ *Laporan Pagi*\n\n" + aiMessage);
+    await client.sendMessage(waId, "*Laporan Pagi*\n\n" + aiMessage);
     console.log('[CRON 08:00] Laporan pagi berhasil dikirim.');
 
   } catch (err) {
