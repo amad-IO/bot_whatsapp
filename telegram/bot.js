@@ -1,4 +1,7 @@
-const TelegramBot = require('node-telegram-bot-api').default || require('node-telegram-bot-api');
+let TelegramBot = require('node-telegram-bot-api');
+if (typeof TelegramBot !== 'function') {
+    TelegramBot = TelegramBot.default || TelegramBot.TelegramBot;
+}
 const { handleStart, handleMessage, handleCallbackQuery, handlePhoto } = require('./handlers');
 
 function initTelegramBot() {
