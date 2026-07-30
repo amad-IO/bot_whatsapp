@@ -1,0 +1,26 @@
+CREATE TABLE IF NOT EXISTS bot_qris (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nama_rekening VARCHAR(100) NOT NULL,
+    file_path VARCHAR(255) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS bot_splitbill (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    waktu DATETIME DEFAULT CURRENT_TIMESTAMP,
+    total DECIMAL(10, 2) DEFAULT 0,
+    bot_qris_id INT,
+    status VARCHAR(50) DEFAULT 'Pending',
+    FOREIGN KEY (bot_qris_id) REFERENCES bot_qris(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS bot_splitbill_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    splitbill_id INT NOT NULL,
+    qty INT DEFAULT 1,
+    nama_barang VARCHAR(255) NOT NULL,
+    harga_satuan DECIMAL(10, 2) DEFAULT 0,
+    subtotal DECIMAL(10, 2) DEFAULT 0,
+    wa_nomor_partisipan VARCHAR(20),
+    FOREIGN KEY (splitbill_id) REFERENCES bot_splitbill(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
