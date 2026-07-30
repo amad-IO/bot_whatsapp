@@ -48,13 +48,21 @@ async function handlePhoto(bot, msg) {
     const state = getState(chatId);
 
     if (state.step === 'WAIT_QRIS_PHOTO') {
-        const fileId = msg.photo[msg.photo.length - 1].file_id;
-        const qrisDir = path.join(__dirname, '..', 'qris_images');
-        const filePath = await bot.downloadFile(fileId, qrisDir);
-        
-        await db.query('INSERT INTO bot_qris (nama_rekening, file_path) VALUES (?, ?)', [state.qrisName, filePath]);
-        clearState(chatId);
-        bot.sendMessage(chatId, `✅ QRIS "${state.qrisName}" berhasil disimpan!`);
+        try {
+            const fileId = msg.photo[msg.photo.length - 1].file_id;
+            const qrisDir = path.join(__dirname, '..', 'qris_images');
+            if (!fs.existsSync(qrisDir)) {
+                fs.mkdirSync(qrisDir, { recursive: true });
+            }
+            const filePath = await bot.downloadFile(fileId, qrisDir);
+            
+            await db.query('INSERT INTO bot_qris (nama_rekening, file_path) VALUES (?, ?)', [state.qrisName, filePath]);
+            clearState(chatId);
+            bot.sendMessage(chatId, `✅ QRIS "${state.qrisName}" berhasil disimpan!`);
+        } catch (e) {
+            console.error('Error saat menyimpan QRIS:', e);
+            bot.sendMessage(chatId, `❌ Terjadi kesalahan: ${e.message}`);
+        }
     } else if (state.step === 'WAIT_RECEIPT') {
         bot.sendMessage(chatId, "⏳ Sedang memproses struk dengan Gemini AI, mohon tunggu...");
         const fileId = msg.photo[msg.photo.length - 1].file_id;
