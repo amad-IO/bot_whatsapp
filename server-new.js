@@ -1150,3 +1150,12 @@ server.listen(PORT, () => {
     saved.forEach(id => connectWhatsApp(id));
   }
 });
+
+// Internal Queue Processor for wa_outgoing
+setInterval(async () => {
+  try {
+    await processQueue(20);
+  } catch (err) {
+    console.error('Error auto-processing queue:', err);
+  }
+}, 10000);
