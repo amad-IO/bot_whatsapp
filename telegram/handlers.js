@@ -328,6 +328,10 @@ async function handleCallbackQuery(bot, query) {
         bot.sendMessage(chatId, "📸 *Pilihan disimpan!*\nSekarang silakan kirimkan foto struk belanja Anda.", { parse_mode: 'Markdown' });
     } else if (data === 'confirm_receipt_yes') {
         const state = getState(chatId);
+        if (!state.parsedData || !state.parsedData.items) {
+            bot.sendMessage(chatId, "⚠️ Sesi Anda telah berakhir (mungkin karena server direstart). Silakan kirim ulang foto struk Anda.");
+            return;
+        }
         showAssignMenu(bot, chatId, state.parsedData);
     } else if (data.startsWith('assign_item_')) {
         const index = parseInt(data.replace('assign_item_', ''));
