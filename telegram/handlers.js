@@ -163,9 +163,9 @@ async function handlePhoto(bot, msg) {
 
             let textMsg = "🧾 *Hasil Ekstraksi Struk:*\n\n";
             result.items.forEach((item, index) => {
-                textMsg += `${index+1}. ${item.qty}x ${item.nama_barang} @ Rp ${item.harga_satuan.toLocaleString('id-ID')} = Rp ${item.subtotal.toLocaleString('id-ID')}\n`;
+                textMsg += `▪️ *${item.nama_barang}*\n      ${item.qty} x Rp ${item.harga_satuan.toLocaleString('id-ID')} = *Rp ${item.subtotal.toLocaleString('id-ID')}*\n`;
             });
-            textMsg += `\n*Total: Rp ${result.total.toLocaleString('id-ID')}*\n\nApakah data ini sudah benar?`;
+            textMsg += `\n💰 *Total: Rp ${result.total.toLocaleString('id-ID')}*\n\nApakah data ini sudah benar?`;
 
             setState(chatId, { step: 'CONFIRM_RECEIPT', parsedData: result });
 
