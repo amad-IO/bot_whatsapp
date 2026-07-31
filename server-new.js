@@ -697,8 +697,6 @@ async function processQueue(limit = 20) {
     try {
       const client = clients[row.staff_id];
       if (!client) {
-        await db.query("UPDATE wa_outgoing SET status='failed', updated_at=NOW() WHERE id=?", [dbId]);
-        failCount++;
         continue;
       }
 
