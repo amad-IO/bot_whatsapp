@@ -725,11 +725,12 @@ async function processQueue(limit = 20) {
         sent = await client.sendMessage(waId, (row.message || '') + '\u200B');
       }
 
+      const msgId = sent && sent.id ? sent.id.id : (sent ? sent.id_serialized : 'unknown');
       await db.query(
         "UPDATE wa_outgoing SET status='sent', message_id=?, updated_at=NOW() WHERE id=?",
-        [sent.id.id, dbId]
+        [msgId, dbId]
       );
-      io.emit('wa-status-update', { dbId, messageId: sent.id.id, status: 'sent' });
+      io.emit('wa-status-update', { dbId, messageId: msgId, status: 'sent' });
       successCount++;
 
     } catch (e) {
