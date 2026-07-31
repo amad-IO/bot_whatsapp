@@ -5,7 +5,7 @@ async function parseReceipt(base64Image, mimeType) {
     if (!apiKey) throw new Error("GEMINI_API_KEY tidak tersedia.");
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     const prompt = `
 Anda adalah sistem pengekstrak struk belanja otomatis.
@@ -48,7 +48,7 @@ async function chatWithContext(userText, kontaks, qris) {
     if (!apiKey) throw new Error("GEMINI_API_KEY tidak tersedia.");
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     const prompt = `Anda adalah asisten cerdas untuk membantu pengguna mengelola Bot WhatsApp Split Bill.
 Anda memiliki akses ke daftar kontak (maks 25 terakhir) dan daftar QRIS pengguna.
