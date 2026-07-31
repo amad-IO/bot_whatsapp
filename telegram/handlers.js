@@ -170,6 +170,13 @@ async function handlePhoto(bot, msg) {
                 return;
             }
 
+            // Sanitasi nama barang agar tidak merusak formatting Markdown Telegram (seperti backtick `)
+            result.items.forEach(item => {
+                if (item.nama_barang) {
+                    item.nama_barang = item.nama_barang.replace(/[*_`\[\]]/g, ' ').replace(/\s+/g, ' ').trim();
+                }
+            });
+
             // PECAH ITEM JIKA QTY > 1
             let expandedItems = [];
             result.items.forEach(item => {
