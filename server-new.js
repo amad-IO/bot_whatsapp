@@ -41,8 +41,11 @@ const CRON_TOKEN      = process.env.CRON_TOKEN                || 'RAHASIA_CRON_1
 const API_KEY         = process.env.API_KEY                   || '';
 const WEBHOOK_URL     = process.env.WEBHOOK_URL               || '';
 const MAX_RETRY       = parseInt(process.env.MAX_RETRY)       || 3;
-const QUEUE_DELAY_MIN = parseInt(process.env.QUEUE_DELAY_MIN) || 2000;
-const QUEUE_DELAY_MAX = parseInt(process.env.QUEUE_DELAY_MAX) || 5000;
+// Delay antar pesan di queue: default 15-45 detik (acak) agar tidak terdeteksi spam oleh WhatsApp
+const QUEUE_DELAY_MIN = parseInt(process.env.QUEUE_DELAY_MIN) || 15000;
+const QUEUE_DELAY_MAX = parseInt(process.env.QUEUE_DELAY_MAX) || 45000;
+// Delay antar retry (exponential backoff): setiap retry tunggu lebih lama
+const RETRY_DELAY_MS  = parseInt(process.env.RETRY_DELAY_MS)  || 300000; // 5 menit
 const AUTO_REPLY_ENABLED  = process.env.AUTO_REPLY_ENABLED  === 'true';
 const AUTO_BOT_AI_ENABLED = process.env.AUTO_BOT_AI_ENABLED === 'true';
 const SESSIONS_FILE   = '.wa-sessions.json';
@@ -743,11 +746,15 @@ async function processQueue(limit = 20) {
       console.error('QUEUE ERROR id=', dbId, e.message);
       const retryCount = (row.retry_count || 0) + 1;
       if (retryCount < MAX_RETRY) {
+        // Exponential backoff: retry ke-1 tunggu 5 mnt, ke-2 tunggu 10 mnt, dst.
+        const backoffMs = RETRY_DELAY_MS * retryCount;
+        const retryAt = new Date(Date.now() + backoffMs);
+        const retryAtStr = retryAt.toISOString().slice(0, 19).replace('T', ' ');
         await db.query(
-          'UPDATE wa_outgoing SET retry_count=?, updated_at=NOW() WHERE id=?',
-          [retryCount, dbId]
+          'UPDATE wa_outgoing SET retry_count=?, scheduled_at=?, updated_at=NOW() WHERE id=?',
+          [retryCount, retryAtStr, dbId]
         );
-        console.log(`[QUEUE] id=${dbId} retry ${retryCount}/${MAX_RETRY}`);
+        console.log(`[QUEUE] id=${dbId} retry ${retryCount}/${MAX_RETRY} dijadwalkan pada ${retryAtStr}`);
       } else {
         await db.query(
           "UPDATE wa_outgoing SET status='failed', retry_count=?, updated_at=NOW() WHERE id=?",
@@ -1157,10 +1164,11 @@ server.listen(PORT, () => {
 });
 
 // Internal Queue Processor for wa_outgoing
+// Proses hanya 1 pesan per interval (60 detik) untuk menghindari deteksi spam WhatsApp
 setInterval(async () => {
   try {
-    await processQueue(20);
+    await processQueue(1);
   } catch (err) {
     console.error('Error auto-processing queue:', err);
   }
-}, 10000);
+}, 60000); // 1 menit sekali

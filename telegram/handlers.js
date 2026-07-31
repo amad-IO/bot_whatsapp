@@ -494,6 +494,11 @@ async function finishSplitBill(bot, chatId) {
         
         let staffId = 'bot'; // Session WA utama
         
+        // === ANTI-BAN: Jadwalkan pengiriman dengan jeda 90 detik per penerima ===
+        // Pesan pertama dikirim 30 detik dari sekarang, berikutnya +90 detik
+        let scheduledDelayMs = 30 * 1000; // mulai 30 detik dari sekarang
+        const DELAY_PER_RECIPIENT_MS = 90 * 1000; // jeda 90 detik antar penerima
+        
         for (const nomor in hutangPerOrang) {
             const tagihan = hutangPerOrang[nomor];
             let caption = `Halo! Ini rincian patungan / Split Bill kamu:\n\n`;
@@ -502,13 +507,20 @@ async function finishSplitBill(bot, chatId) {
             });
             caption += `\n*Total Tagihan: Rp ${tagihan.total.toLocaleString('id-ID')}*\n\nSilakan transfer ke QRIS berikut ya, terima kasih! 🙏`;
             
+            // Hitung waktu jadwal pengiriman untuk nomor ini
+            const scheduledAt = new Date(Date.now() + scheduledDelayMs);
+            const scheduledAtStr = scheduledAt.toISOString().slice(0, 19).replace('T', ' ');
+            
             if (qrisBase64) {
-                await db.query('INSERT INTO wa_outgoing (staff_id, wa_number, message, file_name, file_mime, file_data, msg_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                [staffId, nomor, caption, qrisFileName, qrisMime, qrisBase64, 'file', 'pending']);
+                await db.query('INSERT INTO wa_outgoing (staff_id, wa_number, message, file_name, file_mime, file_data, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [staffId, nomor, caption, qrisFileName, qrisMime, qrisBase64, 'file', 'pending', scheduledAtStr]);
             } else {
-                await db.query('INSERT INTO wa_outgoing (staff_id, wa_number, message, msg_type, status) VALUES (?, ?, ?, ?, ?)',
-                [staffId, nomor, caption, 'text', 'pending']);
+                await db.query('INSERT INTO wa_outgoing (staff_id, wa_number, message, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?)',
+                [staffId, nomor, caption, 'text', 'pending', scheduledAtStr]);
             }
+            
+            console.log(`[SPLIT-BILL] Pesan ke ${nomor} dijadwalkan pada ${scheduledAtStr}`);
+            scheduledDelayMs += DELAY_PER_RECIPIENT_MS; // tambah jeda untuk penerima berikutnya
         }
         
         clearState(chatId);
