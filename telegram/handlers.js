@@ -39,13 +39,18 @@ function handleStart(bot, msg) {
             ]
         }
     };
-    bot.sendMessage(chatId, "🎉 Selamat datang di Bot Asisten Timo (Telegram)!\n\nSilakan pilih menu di bawah ini atau chat langsung untuk bertanya ke AI:", options);
+    bot.sendMessage(chatId, "🎉 Selamat datang di Bot Asisten Timo (Telegram)!\n\nSilakan pilih menu di bawah ini atau ketik /cancel untuk membatalkan proses yang sedang berjalan:", options);
 }
 
 async function handleMessage(bot, msg) {
     const chatId = msg.chat.id;
     const text = msg.text;
     if (!text) return; // Abaikan jika bukan teks
+
+    if (text.toLowerCase() === '/cancel') {
+        clearState(chatId);
+        return bot.sendMessage(chatId, "✅ Operasi dibatalkan. Anda bisa mulai dari awal.");
+    }
 
     const state = getState(chatId);
 
@@ -161,20 +166,40 @@ async function handlePhoto(bot, msg) {
                 return;
             }
 
+            // PECAH ITEM JIKA QTY > 1
+            let expandedItems = [];
+            result.items.forEach(item => {
+                const q = parseInt(item.qty) || 1;
+                if (q > 1) {
+                    const splitSubtotal = item.subtotal / q;
+                    for (let i = 0; i < q; i++) {
+                        expandedItems.push({
+                            qty: 1,
+                            nama_barang: item.nama_barang,
+                            harga_satuan: item.harga_satuan,
+                            subtotal: splitSubtotal
+                        });
+                    }
+                } else {
+                    expandedItems.push(item);
+                }
+            });
+            result.items = expandedItems;
+
             let textMsg = "🧾 *Hasil Ekstraksi Struk:*\n\n";
             result.items.forEach((item, index) => {
                 textMsg += `▪️ *${item.nama_barang}*\n      ${item.qty} x Rp ${item.harga_satuan.toLocaleString('id-ID')} = *Rp ${item.subtotal.toLocaleString('id-ID')}*\n`;
             });
             textMsg += `\n💰 *Total: Rp ${result.total.toLocaleString('id-ID')}*\n\nApakah data ini sudah benar?`;
 
-            setState(chatId, { step: 'CONFIRM_RECEIPT', parsedData: result });
+            setState(chatId, { ...state, step: 'CONFIRM_RECEIPT', parsedData: result });
 
             const options = {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
                         [{ text: '✅ Ya, Benar', callback_data: 'confirm_receipt_yes' }],
-                        [{ text: '❌ Ulangi (Kirim Struk Lain)', callback_data: 'split_bill' }]
+                        [{ text: '❌ Ulangi (Kirim Struk Lain)', callback_data: 'lanjut_kirim_struk' }]
                     ]
                 }
             };
@@ -184,6 +209,24 @@ async function handlePhoto(bot, msg) {
             bot.sendMessage(chatId, "❌ Terjadi kesalahan saat memproses gambar: " + e.message);
         }
     }
+}
+
+function getParticipantKeyboard(kontaks, selectedParts) {
+    let buttons = [];
+    kontaks.forEach(k => {
+        const isSelected = selectedParts.includes(k.nomor);
+        const text = isSelected ? `✅ ${k.nama}` : `❌ ${k.nama}`;
+        buttons.push([{ text, callback_data: `toggle_participant_${k.nomor}` }]);
+    });
+    
+    // Format 2 cols
+    let formattedButtons = [];
+    for(let i=0; i<buttons.length; i+=2){
+        if(buttons[i+1]) formattedButtons.push([buttons[i][0], buttons[i+1][0]]);
+        else formattedButtons.push([buttons[i][0]]);
+    }
+    formattedButtons.push([{ text: '➡️ Lanjut Kirim Struk', callback_data: 'lanjut_kirim_struk' }]);
+    return { inline_keyboard: formattedButtons };
 }
 
 async function handleCallbackQuery(bot, query) {
@@ -242,8 +285,39 @@ async function handleCallbackQuery(bot, query) {
         clearState(chatId);
         bot.sendMessage(chatId, `❌ Penambahan kontak dibatalkan.`);
     } else if (data === 'split_bill') {
-        setState(chatId, { step: 'WAIT_RECEIPT' });
-        bot.sendMessage(chatId, "📸 Silakan kirimkan foto struk belanja Anda.");
+        const [kontaks] = await db.query('SELECT nama, nomor FROM bot_kontak ORDER BY created_at DESC');
+        if (kontaks.length === 0) {
+            return bot.sendMessage(chatId, "❌ Anda belum memiliki kontak. Silakan /start dan tambah kontak dulu.");
+        }
+        setState(chatId, { step: 'SELECT_PARTICIPANTS', participants: [] });
+        bot.sendMessage(chatId, "👥 *Pilih Partisipan yang Ikut Makan:*\nKlik nama untuk memilih/membatalkan. Jika sudah selesai memilih, klik *Lanjut Kirim Struk*.", {
+            parse_mode: 'Markdown',
+            reply_markup: getParticipantKeyboard(kontaks, [])
+        });
+    } else if (data.startsWith('toggle_participant_')) {
+        const nomor = data.replace('toggle_participant_', '');
+        const state = getState(chatId);
+        if (state.step !== 'SELECT_PARTICIPANTS') return;
+        
+        let parts = state.participants || [];
+        if (parts.includes(nomor)) {
+            parts = parts.filter(n => n !== nomor);
+        } else {
+            parts.push(nomor);
+        }
+        setState(chatId, { ...state, participants: parts });
+        
+        const [kontaks] = await db.query('SELECT nama, nomor FROM bot_kontak ORDER BY created_at DESC');
+        bot.editMessageReplyMarkup(getParticipantKeyboard(kontaks, parts), {
+            chat_id: chatId,
+            message_id: query.message.message_id
+        }).catch(()=>{});
+    } else if (data === 'lanjut_kirim_struk') {
+        const state = getState(chatId);
+        setState(chatId, { ...state, step: 'WAIT_RECEIPT' });
+        // Hapus pesan menu partisipan agar tidak numpuk
+        bot.deleteMessage(chatId, query.message.message_id).catch(()=>{});
+        bot.sendMessage(chatId, "📸 *Pilihan disimpan!*\nSekarang silakan kirimkan foto struk belanja Anda.", { parse_mode: 'Markdown' });
     } else if (data === 'confirm_receipt_yes') {
         const state = getState(chatId);
         showAssignMenu(bot, chatId, state.parsedData);
@@ -252,12 +326,16 @@ async function handleCallbackQuery(bot, query) {
         const state = getState(chatId);
         const item = state.parsedData.items[index];
         
-        const [kontaks] = await db.query('SELECT nama, nomor FROM bot_kontak LIMIT 50'); 
+        const [kontaks] = await db.query('SELECT nama, nomor FROM bot_kontak'); 
+        const selectedParts = state.participants || [];
+        
         let buttons = [];
         buttons.push([{ text: '🙋‍♂️ Saya Sendiri', callback_data: `assign_contact_self_${index}` }]);
         
         kontaks.forEach(k => {
-            buttons.push([{ text: `👤 ${k.nama}`, callback_data: `assign_contact_${k.nomor}_${index}` }]);
+            if (selectedParts.includes(k.nomor)) {
+                buttons.push([{ text: `👤 ${k.nama}`, callback_data: `assign_contact_${k.nomor}_${index}` }]);
+            }
         });
         
         let formattedButtons = [];
@@ -278,12 +356,15 @@ async function handleCallbackQuery(bot, query) {
         const state = getState(chatId);
         if(!state.assignments) state.assignments = {};
         state.assignments[index] = nomor;
-        setState(chatId, { assignments: state.assignments });
+        setState(chatId, { ...state, assignments: state.assignments });
         
+        // Hapus menu pemilihan agar chat rapi
+        bot.deleteMessage(chatId, query.message.message_id).catch(()=>{});
         showAssignMenu(bot, chatId, state.parsedData);
         
     } else if (data === 'back_to_assign') {
         const state = getState(chatId);
+        bot.deleteMessage(chatId, query.message.message_id).catch(()=>{});
         showAssignMenu(bot, chatId, state.parsedData);
     } else if (data === 'go_to_qris') {
         const [rows] = await db.query('SELECT id, nama_rekening FROM bot_qris ORDER BY id DESC');
@@ -302,7 +383,8 @@ async function handleCallbackQuery(bot, query) {
 
     } else if (data.startsWith('select_qris_')) {
         const qrisId = data.replace('select_qris_', '');
-        setState(chatId, { selectedQris: qrisId });
+        setState(chatId, { ...getState(chatId), selectedQris: qrisId });
+        bot.deleteMessage(chatId, query.message.message_id).catch(()=>{});
         finishSplitBill(bot, chatId);
     }
 
@@ -343,6 +425,8 @@ function showAssignMenu(bot, chatId, parsedData) {
     }
 
     const options = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: formattedButtons } };
+    
+    // Kalau sebelumnya sudah ada assign menu, lebih baik kirim baru agar posisinya di bawah
     bot.sendMessage(chatId, textMsg, options);
 }
 
