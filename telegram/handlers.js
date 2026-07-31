@@ -471,7 +471,7 @@ async function finishSplitBill(bot, chatId) {
             if (qrisFileName.endsWith('.png')) qrisMime = 'image/png';
         }
         
-        let staffId = process.env.OWNER_WA_NUMBER || 'admin';
+        let staffId = 'bot'; // Session WA utama
         
         for (const nomor in hutangPerOrang) {
             const tagihan = hutangPerOrang[nomor];
