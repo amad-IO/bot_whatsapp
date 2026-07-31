@@ -695,9 +695,15 @@ async function processQueue(limit = 20) {
     const dbId = row.id;
 
     try {
-      const client = clients[row.staff_id];
+      let client = clients[row.staff_id];
       if (!client) {
-        continue;
+        // Fallback ke koneksi WA yang pertama kali aktif jika staff_id tidak ditemukan
+        const clientIds = Object.keys(clients);
+        if (clientIds.length > 0) {
+            client = clients[clientIds[0]];
+        } else {
+            continue; // Tidak ada koneksi WA yang aktif sama sekali
+        }
       }
 
       const number = normalizePhone(row.wa_number);
