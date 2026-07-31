@@ -50,12 +50,12 @@ async function handleMessage(bot, msg) {
     const state = getState(chatId);
 
     if (state.step === 'WAIT_CONTACT') {
-        const parts = text.split('-');
-        if (parts.length < 2) {
+        const splitIndex = text.indexOf('-');
+        if (splitIndex === -1) {
             return bot.sendMessage(chatId, "❌ Format salah. Gunakan format:\nNama - Nomor WA\n(Contoh: Budi - 08123456789)");
         }
-        const nama = parts[0].trim();
-        const nomor = formatWaNumber(parts[1]);
+        const nama = text.substring(0, splitIndex).trim();
+        const nomor = formatWaNumber(text.substring(splitIndex + 1));
         if (!nomor) return bot.sendMessage(chatId, "❌ Nomor tidak valid.");
 
         try {
@@ -74,7 +74,12 @@ async function handleMessage(bot, msg) {
             }
 
             await db.query('INSERT INTO bot_kontak (nama, nomor) VALUES (?, ?)', [nama, nomor]);
-            await syncToGoogleSheets({ nomor_wa: nomor, nama: nama });
+            await syncToGoogleSheets({ 
+                token: process.env.GOOGLE_SHEET_TOKEN || '',
+                action: 'kontak_baru',
+                nomor: nomor, 
+                nama: nama 
+            });
             clearState(chatId);
             bot.sendMessage(chatId, `✅ Kontak ${nama} (${nomor}) berhasil disimpan & disinkronisasi ke Google Sheet.`);
         } catch (e) {
@@ -224,7 +229,12 @@ async function handleCallbackQuery(bot, query) {
         const state = getState(chatId);
         if (state.tempName && state.tempNumber) {
             await db.query('UPDATE bot_kontak SET nama = ? WHERE nomor = ?', [state.tempName, state.tempNumber]);
-            await syncToGoogleSheets({ nomor_wa: state.tempNumber, nama: state.tempName });
+            await syncToGoogleSheets({ 
+                token: process.env.GOOGLE_SHEET_TOKEN || '',
+                action: 'kontak_baru',
+                nomor: state.tempNumber, 
+                nama: state.tempName 
+            });
             bot.sendMessage(chatId, `✅ Kontak berhasil diperbarui menjadi ${state.tempName} (${state.tempNumber}).`);
         }
         clearState(chatId);
