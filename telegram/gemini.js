@@ -43,4 +43,31 @@ HANYA KELUARKAN JSON VALID.
     return JSON.parse(text);
 }
 
-module.exports = { parseReceipt };
+async function chatWithContext(userText, kontaks, qris) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("GEMINI_API_KEY tidak tersedia.");
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const prompt = `Anda adalah asisten cerdas untuk membantu pengguna mengelola Bot WhatsApp Split Bill.
+Anda memiliki akses ke daftar kontak (maks 25 terakhir) dan daftar QRIS pengguna.
+
+Daftar Kontak Pengguna (nomor, nama):
+${JSON.stringify(kontaks)}
+
+Daftar QRIS Pengguna (id, nama_rekening):
+${JSON.stringify(qris)}
+
+Instruksi:
+1. Jika pengguna bertanya tentang kontak, carilah di daftar kontak dan jawablah dengan ramah berdasarkan data di atas. (Jika ditanya nomor si X, cari X dan sebutkan nomornya).
+2. Jika pengguna meminta untuk MELIHAT gambar QRIS tertentu, Anda HARUS meminta izin terlebih dahulu ("Apakah Anda ingin saya tampilkan gambar QRIS-nya?").
+3. Jika pengguna SUDAH mengiyakan (setuju/memberi izin) untuk menampilkan QRIS, Anda HARUS merespons dengan tag khusus: [TAMPILKAN_QRIS_ID_X] (dimana X adalah angka id QRIS). Anda boleh menambahkan pesan pendamping, contoh: "Baik, ini dia QRIS-nya: [TAMPILKAN_QRIS_ID_1]".
+
+Pesan pengguna: ${userText}
+`;
+    const result = await model.generateContent(prompt);
+    return result.response.text();
+}
+
+module.exports = { parseReceipt, chatWithContext };

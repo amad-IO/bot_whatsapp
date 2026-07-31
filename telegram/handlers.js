@@ -2,7 +2,29 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db');
 const { setState, getState, clearState } = require('./state');
-const { parseReceipt } = require('./gemini');
+const { parseReceipt, chatWithContext } = require('./gemini');
+
+async function syncToGoogleSheets(data) {
+  const url = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+  if (!url) return;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      redirect: 'follow'
+    });
+  } catch (err) {
+    console.error('Google Sheet Sync Error:', err);
+  }
+}
+
+function formatWaNumber(num) {
+    let clean = num.replace(/\D/g, '');
+    if (clean.startsWith('0')) clean = '62' + clean.substring(1);
+    else if (clean.startsWith('8')) clean = '62' + clean;
+    return clean;
+}
 
 function handleStart(bot, msg) {
     const chatId = msg.chat.id;
@@ -11,18 +33,20 @@ function handleStart(bot, msg) {
     const options = {
         reply_markup: {
             inline_keyboard: [
-                [{ text: '➕ Tambah Kontak', callback_data: 'add_kontak' }],
-                [{ text: '🖼️ Upload QRIS', callback_data: 'upload_qris' }],
+                [{ text: '➕ Tambah Kontak', callback_data: 'add_kontak' }, { text: '👥 Daftar Kontak', callback_data: 'view_contacts' }],
+                [{ text: '🖼️ Upload QRIS', callback_data: 'upload_qris' }, { text: '💳 Lihat QRIS', callback_data: 'view_qris' }],
                 [{ text: '🧾 Mulai Split Bill', callback_data: 'split_bill' }]
             ]
         }
     };
-    bot.sendMessage(chatId, "🎉 Selamat datang di Bot Asisten Timo (Telegram)!\n\nSilakan pilih menu di bawah ini:", options);
+    bot.sendMessage(chatId, "🎉 Selamat datang di Bot Asisten Timo (Telegram)!\n\nSilakan pilih menu di bawah ini atau chat langsung untuk bertanya ke AI:", options);
 }
 
 async function handleMessage(bot, msg) {
     const chatId = msg.chat.id;
     const text = msg.text;
+    if (!text) return; // Abaikan jika bukan teks
+
     const state = getState(chatId);
 
     if (state.step === 'WAIT_CONTACT') {
@@ -31,15 +55,63 @@ async function handleMessage(bot, msg) {
             return bot.sendMessage(chatId, "❌ Format salah. Gunakan format:\nNama - Nomor WA\n(Contoh: Budi - 08123456789)");
         }
         const nama = parts[0].trim();
-        const nomor = parts[1].trim().replace(/\D/g, '');
+        const nomor = formatWaNumber(parts[1]);
         if (!nomor) return bot.sendMessage(chatId, "❌ Nomor tidak valid.");
 
-        await db.query('INSERT INTO bot_kontak (nama, nomor) VALUES (?, ?) ON DUPLICATE KEY UPDATE nama = ?', [nama, nomor, nama]);
-        clearState(chatId);
-        bot.sendMessage(chatId, `✅ Kontak ${nama} (${nomor}) berhasil disimpan.`);
+        try {
+            const [existing] = await db.query('SELECT nama FROM bot_kontak WHERE nomor = ?', [nomor]);
+            if (existing && existing.length > 0) {
+                setState(chatId, { step: 'WAIT_DUPLICATE_DECISION', tempName: nama, tempNumber: nomor });
+                const opts = {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🔄 Ganti Nama', callback_data: 'dup_replace' }],
+                            [{ text: '❌ Cancel', callback_data: 'dup_cancel' }]
+                        ]
+                    }
+                };
+                return bot.sendMessage(chatId, `Nomor ini sudah tersimpan atas nama *${existing[0].nama}*.`, { parse_mode: 'Markdown', ...opts });
+            }
+
+            await db.query('INSERT INTO bot_kontak (nama, nomor) VALUES (?, ?)', [nama, nomor]);
+            await syncToGoogleSheets({ nomor_wa: nomor, nama: nama });
+            clearState(chatId);
+            bot.sendMessage(chatId, `✅ Kontak ${nama} (${nomor}) berhasil disimpan & disinkronisasi ke Google Sheet.`);
+        } catch (e) {
+            console.error('DB Error:', e);
+            bot.sendMessage(chatId, `❌ Terjadi kesalahan: ${e.message}`);
+        }
     } else if (state.step === 'WAIT_QRIS_NAME') {
         setState(chatId, { step: 'WAIT_QRIS_PHOTO', qrisName: text.trim() });
         bot.sendMessage(chatId, `Nama Rekening "${text.trim()}" disimpan.\n📷 Sekarang silakan kirim gambar QRIS-nya.`);
+    } else if (!state.step && !text.startsWith('/')) {
+        // Chat bebas ke Gemini
+        bot.sendMessage(chatId, "⏳ Berpikir...");
+        try {
+            const [kontaks] = await db.query('SELECT nama, nomor FROM bot_kontak ORDER BY created_at DESC LIMIT 25');
+            const [qris] = await db.query('SELECT id, nama_rekening FROM bot_qris');
+            
+            const reply = await chatWithContext(text, kontaks, qris);
+            
+            const match = reply.match(/\[TAMPILKAN_QRIS_ID_(\d+)\]/);
+            if (match) {
+                const qrisId = match[1];
+                const cleanReply = reply.replace(match[0], '').trim();
+                if (cleanReply) await bot.sendMessage(chatId, cleanReply);
+                
+                const [qData] = await db.query('SELECT * FROM bot_qris WHERE id = ?', [qrisId]);
+                if (qData && qData.length > 0 && fs.existsSync(qData[0].file_path)) {
+                    bot.sendPhoto(chatId, fs.createReadStream(qData[0].file_path), { caption: `QRIS: ${qData[0].nama_rekening}` });
+                } else {
+                    bot.sendMessage(chatId, "❌ File QRIS tidak ditemukan di server.");
+                }
+            } else {
+                bot.sendMessage(chatId, reply);
+            }
+        } catch (e) {
+            console.error('Gemini error:', e);
+            bot.sendMessage(chatId, "❌ Maaf, AI sedang mengalami gangguan: " + e.message);
+        }
     }
 }
 
@@ -119,6 +191,46 @@ async function handleCallbackQuery(bot, query) {
     } else if (data === 'upload_qris') {
         setState(chatId, { step: 'WAIT_QRIS_NAME' });
         bot.sendMessage(chatId, "Silakan ketik nama rekening/bank untuk QRIS ini (contoh: BCA Ahmad):");
+    } else if (data === 'view_contacts') {
+        const [rows] = await db.query('SELECT nama, nomor FROM bot_kontak ORDER BY created_at DESC LIMIT 25');
+        if (rows.length === 0) {
+            bot.sendMessage(chatId, "Belum ada kontak yang tersimpan.");
+        } else {
+            let msg = "📋 *25 Kontak Terakhir:*\n\n";
+            rows.forEach((r, i) => { msg += `${i+1}. ${r.nama} - ${r.nomor}\n`; });
+            bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
+        }
+    } else if (data === 'view_qris') {
+        const [rows] = await db.query('SELECT id, nama_rekening FROM bot_qris ORDER BY id DESC');
+        if (rows.length === 0) {
+            bot.sendMessage(chatId, "Belum ada QRIS yang tersimpan.");
+        } else {
+            let buttons = [];
+            rows.forEach(r => { buttons.push([{ text: `💳 ${r.nama_rekening}`, callback_data: `show_qris_${r.id}` }]); });
+            buttons.push([{ text: '❌ Batal', callback_data: 'cancel_view_qris' }]);
+            bot.sendMessage(chatId, "Pilih QRIS yang ingin dilihat:", { reply_markup: { inline_keyboard: buttons } });
+        }
+    } else if (data === 'cancel_view_qris') {
+        bot.deleteMessage(chatId, query.message.message_id).catch(()=>{});
+    } else if (data.startsWith('show_qris_')) {
+        const qId = data.replace('show_qris_', '');
+        const [qris] = await db.query('SELECT * FROM bot_qris WHERE id = ?', [qId]);
+        if (qris && qris.length > 0 && fs.existsSync(qris[0].file_path)) {
+            bot.sendPhoto(chatId, fs.createReadStream(qris[0].file_path), { caption: `QRIS: ${qris[0].nama_rekening}` });
+        } else {
+            bot.sendMessage(chatId, "❌ File QRIS tidak ditemukan di server.");
+        }
+    } else if (data === 'dup_replace') {
+        const state = getState(chatId);
+        if (state.tempName && state.tempNumber) {
+            await db.query('UPDATE bot_kontak SET nama = ? WHERE nomor = ?', [state.tempName, state.tempNumber]);
+            await syncToGoogleSheets({ nomor_wa: state.tempNumber, nama: state.tempName });
+            bot.sendMessage(chatId, `✅ Kontak berhasil diperbarui menjadi ${state.tempName} (${state.tempNumber}).`);
+        }
+        clearState(chatId);
+    } else if (data === 'dup_cancel') {
+        clearState(chatId);
+        bot.sendMessage(chatId, `❌ Penambahan kontak dibatalkan.`);
     } else if (data === 'split_bill') {
         setState(chatId, { step: 'WAIT_RECEIPT' });
         bot.sendMessage(chatId, "📸 Silakan kirimkan foto struk belanja Anda.");
@@ -184,7 +296,7 @@ async function handleCallbackQuery(bot, query) {
         finishSplitBill(bot, chatId);
     }
 
-    bot.answerCallbackQuery(query.id);
+    try { bot.answerCallbackQuery(query.id); } catch(e){}
 }
 
 function showAssignMenu(bot, chatId, parsedData) {
@@ -265,13 +377,7 @@ async function finishSplitBill(bot, chatId) {
             if (qrisFileName.endsWith('.png')) qrisMime = 'image/png';
         }
         
-        // As per user specification, waGateway only has one bot running, we can just use the owner WA or anything for staff_id.
-        // We'll use the environment OWNER_WA_NUMBER or just 'main' if not set, but actually the first connected client is safest, or we just insert and the queue processor takes it.
-        // The queue processor queries by staff_id, let's use the first available staff_id from wa_incoming or assume 'main' is connected, or check connected clients.
-        // Let's get the active staff_id from DB or just use a default one like process.env.OWNER_WA_NUMBER.
         let staffId = process.env.OWNER_WA_NUMBER || 'admin';
-        // Better way: use the first connected client, but since telegram runs in the same process, we can't easily access `clients` array here unless exported.
-        // Since we are writing to DB, let's look up the most recently active staff_id in wa_incoming or hardcode it to process.env.OWNER_WA_NUMBER.
         
         for (const nomor in hutangPerOrang) {
             const tagihan = hutangPerOrang[nomor];
