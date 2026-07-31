@@ -110,8 +110,12 @@ async function handleMessage(bot, msg) {
                 if (cleanReply) await bot.sendMessage(chatId, cleanReply);
                 
                 const [qData] = await db.query('SELECT * FROM bot_qris WHERE id = ?', [qrisId]);
-                if (qData && qData.length > 0 && fs.existsSync(qData[0].file_path)) {
-                    bot.sendPhoto(chatId, fs.createReadStream(qData[0].file_path), { caption: `QRIS: ${qData[0].nama_rekening}` });
+                let actualPath = '';
+                if (qData && qData.length > 0) {
+                    actualPath = path.join(__dirname, '..', 'qris_images', path.basename(qData[0].file_path));
+                }
+                if (actualPath && fs.existsSync(actualPath)) {
+                    bot.sendPhoto(chatId, fs.createReadStream(actualPath), { caption: `QRIS: ${qData[0].nama_rekening}` });
                 } else {
                     bot.sendMessage(chatId, "❌ File QRIS tidak ditemukan di server.");
                 }
@@ -263,8 +267,12 @@ async function handleCallbackQuery(bot, query) {
     } else if (data.startsWith('show_qris_')) {
         const qId = data.replace('show_qris_', '');
         const [qris] = await db.query('SELECT * FROM bot_qris WHERE id = ?', [qId]);
-        if (qris && qris.length > 0 && fs.existsSync(qris[0].file_path)) {
-            bot.sendPhoto(chatId, fs.createReadStream(qris[0].file_path), { caption: `QRIS: ${qris[0].nama_rekening}` });
+        let actualPath = '';
+        if (qris && qris.length > 0) {
+            actualPath = path.join(__dirname, '..', 'qris_images', path.basename(qris[0].file_path));
+        }
+        if (actualPath && fs.existsSync(actualPath)) {
+            bot.sendPhoto(chatId, fs.createReadStream(actualPath), { caption: `QRIS: ${qris[0].nama_rekening}` });
         } else {
             bot.sendMessage(chatId, "❌ File QRIS tidak ditemukan di server.");
         }
@@ -440,8 +448,10 @@ async function finishSplitBill(bot, chatId) {
     
     try {
         const [qris] = await db.query('SELECT * FROM bot_qris WHERE id = ?', [qrisId]);
-        let qrisPath = '';
-        if(qris && qris.length > 0) qrisPath = qris[0].file_path;
+        let actualPath = '';
+        if(qris && qris.length > 0) {
+            actualPath = path.join(__dirname, '..', 'qris_images', path.basename(qris[0].file_path));
+        }
         
         const [sbResult] = await db.query('INSERT INTO bot_splitbill (total, bot_qris_id, status) VALUES (?, ?, ?)', [parsedData.total, qrisId, 'Selesai']);
         const sbId = sbResult.insertId;
@@ -465,9 +475,9 @@ async function finishSplitBill(bot, chatId) {
         let qrisBase64 = null;
         let qrisMime = 'image/jpeg';
         let qrisFileName = 'qris.jpg';
-        if (qrisPath && fs.existsSync(qrisPath)) {
-            qrisBase64 = fs.readFileSync(qrisPath).toString('base64');
-            qrisFileName = path.basename(qrisPath);
+        if (actualPath && fs.existsSync(actualPath)) {
+            qrisBase64 = fs.readFileSync(actualPath).toString('base64');
+            qrisFileName = path.basename(actualPath);
             if (qrisFileName.endsWith('.png')) qrisMime = 'image/png';
         }
         

@@ -23,6 +23,7 @@ services:
       - ./.wa-sessions.json:/app/.wa-sessions.json
       - ./server-new.js:/app/server-new.js
       - ./ai-bot.js:/app/ai-bot.js
+      - ./qris_images:/app/qris_images
     depends_on:
       mysql_db:
         condition: service_healthy
