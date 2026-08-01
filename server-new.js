@@ -27,6 +27,17 @@ const cron = require('node-cron');
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
     console.log('[DB] Tabel bot_kontak dipastikan ada.');
+
+    try {
+      await db.query('ALTER TABLE bot_qris ADD COLUMN wa_nomor_pemilik VARCHAR(20) NULL COMMENT "Nomor WA pemilik rekening QRIS ini (dari bot_kontak)"');
+      console.log('[DB] Kolom wa_nomor_pemilik ditambahkan ke bot_qris.');
+      await db.query('UPDATE bot_qris q JOIN bot_kontak k ON q.nama_rekening = k.nama SET q.wa_nomor_pemilik = k.nomor');
+      console.log('[DB] Mengisi pemilik QRIS lama berdasarkan nama rekening.');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') {
+        console.error('[DB] Error alter bot_qris:', e.message);
+      }
+    }
   } catch (err) {
     console.error('[DB] Gagal membuat tabel bot_kontak:', err.message);
   }
@@ -239,7 +250,25 @@ function connectWhatsApp(id) {
     // Ambil nomor pengirim dengan cara yang benar
     // contact.id.user = nomor HP asli (tanpa kode negara awal yang salah)
     const contact = await msg.getContact();
-    const fromNum = contact.id ? contact.id.user : msg.from.replace(/@.*/, '');
+    let fromNum = contact.id ? contact.id.user : msg.from.replace(/@.*/, '');
+    fromNum = fromNum.replace(/\D/g, '');
+    if (fromNum.startsWith('0')) fromNum = '62' + fromNum.substring(1);
+    else if (fromNum.startsWith('8')) fromNum = '62' + fromNum;
+
+    // R1: Opt-in Anti-Ban check for 'HALO'
+    if (msg.body && msg.body.trim().toUpperCase() === 'HALO') {
+      try {
+        const [rows] = await db.query('SELECT nama FROM bot_kontak WHERE nomor = ?', [fromNum]);
+        if (rows && rows.length > 0) {
+          const row = rows[0];
+          await msg.reply(`Halo ${row.nama}! 👋 Nomor kamu sudah tersimpan di sistem Split Bill. Kamu akan menerima tagihan patungan di sini. ✅\u200B`);
+        }
+      } catch (err) {
+        console.error('[DB] Error checking opt-in contact:', err.message);
+      }
+      return;
+    }
+
     const toNum   = msg.to   ? msg.to.replace(/@.*/,   '')                    : '';
     const ownerNumber = process.env.OWNER_WA_NUMBER;
 

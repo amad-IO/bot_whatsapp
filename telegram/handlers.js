@@ -86,7 +86,7 @@ async function handleMessage(bot, msg) {
                 nama: nama 
             });
             clearState(chatId);
-            bot.sendMessage(chatId, `✅ Kontak ${nama} (${nomor}) berhasil disimpan & disinkronisasi ke Google Sheet.`);
+            bot.sendMessage(chatId, `✅ Kontak ${nama} (${nomor}) berhasil disimpan!\n\nAgar ${nama} bisa menerima tagihan split bill, minta ${nama} kirim pesan 'HALO' ke nomor WA bot ini.`);
         } catch (e) {
             console.error('DB Error:', e);
             bot.sendMessage(chatId, `❌ Terjadi kesalahan: ${e.message}`);
@@ -142,9 +142,21 @@ async function handlePhoto(bot, msg) {
             }
             const filePath = await bot.downloadFile(fileId, qrisDir);
             
-            await db.query('INSERT INTO bot_qris (nama_rekening, file_path) VALUES (?, ?)', [state.qrisName, filePath]);
+            const [result] = await db.query('INSERT INTO bot_qris (nama_rekening, file_path) VALUES (?, ?)', [state.qrisName, filePath]);
+            const qrisId = result.insertId;
             clearState(chatId);
-            bot.sendMessage(chatId, `✅ QRIS "${state.qrisName}" berhasil disimpan!`);
+
+            const [kontaks] = await db.query('SELECT nama, nomor FROM bot_kontak ORDER BY nama ASC');
+            let buttons = [];
+            if (kontaks && kontaks.length > 0) {
+                kontaks.forEach(k => {
+                    buttons.push([{ text: `👤 ${k.nama}`, callback_data: `qris_owner_${qrisId}_${k.nomor}` }]);
+                });
+            }
+            buttons.push([{ text: '❌ Bukan dari kontak (QRIS Umum)', callback_data: `qris_owner_${qrisId}_none` }]);
+
+            const options = { reply_markup: { inline_keyboard: buttons } };
+            bot.sendMessage(chatId, `✅ QRIS "${state.qrisName}" berhasil disimpan!\n\nSiapa pemilik QRIS ini?`, options);
         } catch (e) {
             console.error('Error saat menyimpan QRIS:', e);
             bot.sendMessage(chatId, `❌ Terjadi kesalahan: ${e.message}`);
@@ -286,14 +298,16 @@ async function handleCallbackQuery(bot, query) {
     } else if (data === 'dup_replace') {
         const state = getState(chatId);
         if (state.tempName && state.tempNumber) {
-            await db.query('UPDATE bot_kontak SET nama = ? WHERE nomor = ?', [state.tempName, state.tempNumber]);
+            const nama = state.tempName;
+            const nomor = state.tempNumber;
+            await db.query('UPDATE bot_kontak SET nama = ? WHERE nomor = ?', [nama, nomor]);
             await syncToGoogleSheets({ 
                 token: process.env.GOOGLE_SHEET_TOKEN || '',
                 action: 'kontak_baru',
-                nomor: state.tempNumber, 
-                nama: state.tempName 
+                nomor: nomor, 
+                nama: nama 
             });
-            bot.sendMessage(chatId, `✅ Kontak berhasil diperbarui menjadi ${state.tempName} (${state.tempNumber}).`);
+            bot.sendMessage(chatId, `✅ Kontak ${nama} (${nomor}) berhasil disimpan!\n\nAgar ${nama} bisa menerima tagihan split bill, minta ${nama} kirim pesan 'HALO' ke nomor WA bot ini.`);
         }
         clearState(chatId);
     } else if (data === 'dup_cancel') {
@@ -339,52 +353,65 @@ async function handleCallbackQuery(bot, query) {
             bot.sendMessage(chatId, "⚠️ Sesi Anda telah berakhir (mungkin karena server direstart). Silakan kirim ulang foto struk Anda.");
             return;
         }
-        showAssignMenu(bot, chatId, state.parsedData);
-    } else if (data.startsWith('assign_item_')) {
-        const index = parseInt(data.replace('assign_item_', ''));
+        await showAssignMenu(bot, chatId, state.parsedData);
+    } else if (data.startsWith('select_person_')) {
+        const targetPerson = data.replace('select_person_', '');
         const state = getState(chatId);
-        const item = state.parsedData.items[index];
-        
-        const [kontaks] = await db.query('SELECT nama, nomor FROM bot_kontak'); 
-        const selectedParts = state.participants || [];
-        
-        let buttons = [];
-        buttons.push([{ text: '🙋‍♂️ Saya Sendiri', callback_data: `assign_contact_self_${index}` }]);
-        
-        kontaks.forEach(k => {
-            if (selectedParts.includes(k.nomor)) {
-                buttons.push([{ text: `👤 ${k.nama}`, callback_data: `assign_contact_${k.nomor}_${index}` }]);
-            }
+        const assignments = state.assignments || {};
+        const currentAssignedIndices = Object.keys(assignments)
+            .filter(key => assignments[key] === targetPerson)
+            .map(Number);
+        setState(chatId, {
+            ...state,
+            currentPerson: targetPerson,
+            tempSelectedItems: currentAssignedIndices
         });
-        
-        let formattedButtons = [];
-        for(let i=0; i<buttons.length; i+=2){
-             if(buttons[i+1]) formattedButtons.push([buttons[i][0], buttons[i+1][0]]);
-             else formattedButtons.push([buttons[i][0]]);
+        await showPersonItemMenu(bot, chatId, query.message.message_id);
+    } else if (data.startsWith('toggle_person_item_')) {
+        const index = parseInt(data.replace('toggle_person_item_', ''), 10);
+        const state = getState(chatId);
+        let tempSelectedItems = Array.from(state.tempSelectedItems || []);
+        if (tempSelectedItems.includes(index)) {
+            tempSelectedItems = tempSelectedItems.filter(i => i !== index);
+        } else {
+            tempSelectedItems.push(index);
         }
-        formattedButtons.push([{ text: '🔙 Kembali', callback_data: 'back_to_assign' }]);
-
-        const options = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: formattedButtons } };
-        bot.sendMessage(chatId, `Pilih partisipan untuk membayar:\n*${item.qty}x ${item.nama_barang} (Rp ${item.subtotal.toLocaleString('id-ID')})*`, options);
-
-    } else if (data.startsWith('assign_contact_')) {
-        const parts = data.replace('assign_contact_', '').split('_');
-        const nomor = parts[0]; 
-        const index = parseInt(parts[1]);
-        
+        setState(chatId, { ...state, tempSelectedItems });
+        await showPersonItemMenu(bot, chatId, query.message.message_id);
+    } else if (data === 'save_person_items') {
         const state = getState(chatId);
-        if(!state.assignments) state.assignments = {};
-        state.assignments[index] = nomor;
-        setState(chatId, { ...state, assignments: state.assignments });
-        
-        // Hapus menu pemilihan agar chat rapi
-        bot.deleteMessage(chatId, query.message.message_id).catch(()=>{});
-        showAssignMenu(bot, chatId, state.parsedData);
-        
-    } else if (data === 'back_to_assign') {
+        const currentPerson = state.currentPerson;
+        const tempSelectedItems = state.tempSelectedItems || [];
+        const assignments = { ...(state.assignments || {}) };
+
+        // 1. Remove currentPerson from any assignment not in tempSelectedItems
+        for (const key in assignments) {
+            if (assignments[key] === currentPerson && !tempSelectedItems.includes(Number(key))) {
+                delete assignments[key];
+            }
+        }
+        // 2. Set currentPerson for all indices in tempSelectedItems
+        tempSelectedItems.forEach(idx => {
+            assignments[idx] = currentPerson;
+        });
+
+        setState(chatId, {
+            ...state,
+            assignments,
+            tempSelectedItems: undefined,
+            currentPerson: undefined
+        });
+        await showParticipantMenu(bot, chatId, query.message.message_id);
+    } else if (data === 'back_to_participants') {
         const state = getState(chatId);
-        bot.deleteMessage(chatId, query.message.message_id).catch(()=>{});
-        showAssignMenu(bot, chatId, state.parsedData);
+        setState(chatId, {
+            ...state,
+            tempSelectedItems: undefined,
+            currentPerson: undefined
+        });
+        await showParticipantMenu(bot, chatId, query.message.message_id);
+    } else if (data === 'noop') {
+        // Non-interactive button
     } else if (data === 'go_to_qris') {
         const [rows] = await db.query('SELECT id, nama_rekening FROM bot_qris ORDER BY id DESC');
         if (rows.length === 0) {
@@ -405,48 +432,198 @@ async function handleCallbackQuery(bot, query) {
         setState(chatId, { ...getState(chatId), selectedQris: qrisId });
         bot.deleteMessage(chatId, query.message.message_id).catch(()=>{});
         finishSplitBill(bot, chatId);
+    } else if (data.startsWith('qris_owner_')) {
+        const parts = data.split('_');
+        const qrisId = parts[2];
+        const targetNomor = parts.slice(3).join('_');
+
+        if (targetNomor === 'none') {
+            await db.query('UPDATE bot_qris SET wa_nomor_pemilik = NULL WHERE id = ?', [qrisId]);
+            try { bot.answerCallbackQuery(query.id); } catch(e){}
+            const textMsg = "✅ QRIS diset sebagai QRIS Umum (tanpa pemilik khusus).";
+            try {
+                await bot.editMessageText(textMsg, { chat_id: chatId, message_id: query.message.message_id });
+            } catch (err) {
+                await bot.sendMessage(chatId, textMsg);
+            }
+        } else {
+            await db.query('UPDATE bot_qris SET wa_nomor_pemilik = ? WHERE id = ?', [targetNomor, qrisId]);
+            let nama = targetNomor;
+            try {
+                const [rows] = await db.query('SELECT nama FROM bot_kontak WHERE nomor = ?', [targetNomor]);
+                if (rows && rows.length > 0) nama = rows[0].nama;
+            } catch (e) {}
+
+            try { bot.answerCallbackQuery(query.id); } catch(e){}
+            const textMsg = `✅ Pemilik QRIS diset ke: ${nama} (${targetNomor})`;
+            try {
+                await bot.editMessageText(textMsg, { chat_id: chatId, message_id: query.message.message_id });
+            } catch (err) {
+                await bot.sendMessage(chatId, textMsg);
+            }
+        }
     }
 
     try { bot.answerCallbackQuery(query.id); } catch(e){}
 }
 
-function showAssignMenu(bot, chatId, parsedData) {
+function resolveContactName(nomor, contactMap) {
+    if (nomor === 'self') return 'Saya';
+    if (contactMap[nomor]) return contactMap[nomor];
+    const formatted = formatWaNumber(nomor);
+    if (contactMap[formatted]) return contactMap[formatted];
+    if (nomor.startsWith('62')) {
+        const zeroPrefix = '0' + nomor.substring(2);
+        if (contactMap[zeroPrefix]) return contactMap[zeroPrefix];
+    }
+    return nomor;
+}
+
+async function showParticipantMenu(bot, chatId, editMessageId = null) {
     const state = getState(chatId);
+    const parsedData = state.parsedData || { items: [] };
     const assignments = state.assignments || {};
-    
-    let textMsg = "🛒 *Penugasan Barang*\n\n";
+    const selectedParticipants = state.participants || [];
+
+    let contactMap = {};
+    try {
+        const [kontaks] = await db.query('SELECT nama, nomor FROM bot_kontak');
+        if (kontaks && kontaks.length > 0) {
+            kontaks.forEach(k => {
+                contactMap[k.nomor] = k.nama;
+            });
+        }
+    } catch (e) {
+        // Fallback on DB query error
+    }
+
+    const totalItems = parsedData.items ? parsedData.items.length : 0;
+    const assignedCount = Object.keys(assignments).filter(key => assignments[key] !== undefined && assignments[key] !== null).length;
+    const unassignedCount = totalItems - assignedCount;
+
     let buttons = [];
-    
-    let allAssigned = true;
-    
+
+    // 1. Owner button
+    const selfCount = Object.values(assignments).filter(val => val === 'self').length;
+    buttons.push([{ text: `🙋 Saya (Owner) (${selfCount} item)`, callback_data: 'select_person_self' }]);
+
+    // 2. Participant buttons
+    selectedParticipants.forEach(nomor => {
+        const name = resolveContactName(nomor, contactMap);
+        const count = Object.values(assignments).filter(val => val === nomor).length;
+        buttons.push([{ text: `👤 ${name} (${count} item)`, callback_data: `select_person_${nomor}` }]);
+    });
+
+    // 3. Status/Action button
+    if (unassignedCount > 0) {
+        buttons.push([{ text: `⚠️ ${unassignedCount} item belum di-assign`, callback_data: 'noop' }]);
+    } else {
+        buttons.push([{ text: '⚡ Selesai & Pilih QRIS', callback_data: 'go_to_qris' }]);
+    }
+
+    let textMsg = `🛒 *Menu Partisipan (Split Bill)*\n\n`;
+    textMsg += `Total Item: ${totalItems} | Ter-assign: ${assignedCount}\n\n`;
+    textMsg += `Pilih nama di bawah untuk mengatur item yang dibeli oleh orang tersebut:`;
+
+    const options = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: buttons } };
+
+    if (editMessageId) {
+        try {
+            await bot.editMessageText(textMsg, { chat_id: chatId, message_id: editMessageId, ...options });
+            return;
+        } catch (err) {
+            // Fallback to sending new message if edit fails
+        }
+    }
+    await bot.sendMessage(chatId, textMsg, options);
+}
+
+async function showPersonItemMenu(bot, chatId, editMessageId = null) {
+    const state = getState(chatId);
+    const parsedData = state.parsedData || { items: [] };
+    const currentPerson = state.currentPerson;
+    const tempSelectedItems = state.tempSelectedItems || [];
+    const assignments = state.assignments || {};
+
+    let contactMap = {};
+    try {
+        const [kontaks] = await db.query('SELECT nama, nomor FROM bot_kontak');
+        if (kontaks && kontaks.length > 0) {
+            kontaks.forEach(k => {
+                contactMap[k.nomor] = k.nama;
+            });
+        }
+    } catch (e) {
+        // Fallback
+    }
+
+    let personDisplayName = 'Saya';
+    if (currentPerson !== 'self') {
+        personDisplayName = resolveContactName(currentPerson, contactMap);
+    }
+
+    let buttons = [];
+    let tempTotal = 0;
+
     parsedData.items.forEach((item, index) => {
         const assignedTo = assignments[index];
-        let status = "❌ Belum di-assign";
-        if (assignedTo === 'self') status = "🙋‍♂️ Saya Sendiri";
-        else if (assignedTo) status = `👤 ${assignedTo}`;
-        else allAssigned = false;
-        
-        textMsg += `${index+1}. ${item.nama_barang} (Rp ${item.subtotal.toLocaleString('id-ID')}) - ${status}\n`;
-        buttons.push([{ text: `Assign ${index+1}`, callback_data: `assign_item_${index}` }]);
+        if (assignedTo && assignedTo !== currentPerson) {
+            // Locked item (assigned to someone else)
+            buttons.push([{
+                text: `🔒 ${item.nama_barang} (Rp ${item.subtotal.toLocaleString('id-ID')})`,
+                callback_data: 'noop'
+            }]);
+        } else if (tempSelectedItems.includes(index)) {
+            // Checked item (assigned to current person or in tempSelectedItems)
+            tempTotal += item.subtotal;
+            buttons.push([{
+                text: `☑️ ${item.nama_barang} (Rp ${item.subtotal.toLocaleString('id-ID')})`,
+                callback_data: `toggle_person_item_${index}`
+            }]);
+        } else {
+            // Unchecked item (unassigned)
+            buttons.push([{
+                text: `☐ ${item.nama_barang} (Rp ${item.subtotal.toLocaleString('id-ID')})`,
+                callback_data: `toggle_person_item_${index}`
+            }]);
+        }
     });
-    
-    // Format buttons 3 per row
-    let formattedButtons = [];
-    for(let i=0; i<buttons.length; i+=3){
-        let row = [buttons[i][0]];
-        if(buttons[i+1]) row.push(buttons[i+1][0]);
-        if(buttons[i+2]) row.push(buttons[i+2][0]);
-        formattedButtons.push(row);
-    }
 
-    if (allAssigned) {
-        formattedButtons.push([{ text: '✅ Lanjut Pilih QRIS', callback_data: 'go_to_qris' }]);
-    }
+    const tempCount = tempSelectedItems.length;
+    // Save button
+    buttons.push([{
+        text: `✅ Simpan ${personDisplayName} (${tempCount} item, Rp ${tempTotal.toLocaleString('id-ID')})`,
+        callback_data: 'save_person_items'
+    }]);
 
-    const options = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: formattedButtons } };
-    
-    // Kalau sebelumnya sudah ada assign menu, lebih baik kirim baru agar posisinya di bawah
-    bot.sendMessage(chatId, textMsg, options);
+    // Back button
+    buttons.push([{
+        text: '🔙 Kembali',
+        callback_data: 'back_to_participants'
+    }]);
+
+    let textMsg = `👥 *Pilih Barang untuk ${personDisplayName}*\n\n`;
+    textMsg += `Klik pada barang untuk memilih/membatalkan item yang dibeli oleh ${personDisplayName}:`;
+
+    const options = { parse_mode: 'Markdown', reply_markup: { inline_keyboard: buttons } };
+
+    if (editMessageId) {
+        try {
+            await bot.editMessageText(textMsg, { chat_id: chatId, message_id: editMessageId, ...options });
+            return;
+        } catch (err) {
+            // Fallback to sending new message if edit fails
+        }
+    }
+    await bot.sendMessage(chatId, textMsg, options);
+}
+
+async function showAssignMenu(bot, chatId, parsedData, editMessageId = null) {
+    if (parsedData) {
+        const state = getState(chatId);
+        setState(chatId, { ...state, parsedData });
+    }
+    await showParticipantMenu(bot, chatId, editMessageId);
 }
 
 async function finishSplitBill(bot, chatId) {
@@ -460,27 +637,41 @@ async function finishSplitBill(bot, chatId) {
     try {
         const [qris] = await db.query('SELECT * FROM bot_qris WHERE id = ?', [qrisId]);
         let actualPath = '';
-        if(qris && qris.length > 0) {
-            actualPath = path.join(__dirname, '..', 'qris_images', path.basename(qris[0].file_path));
+        let qrisRecord = null;
+        if (qris && qris.length > 0) {
+            qrisRecord = qris[0];
+            actualPath = path.join(__dirname, '..', 'qris_images', path.basename(qrisRecord.file_path));
         }
         
+        const qrisOwnerNumber = (qrisRecord && qrisRecord.wa_nomor_pemilik) ? formatWaNumber(qrisRecord.wa_nomor_pemilik) : null;
+        const qrisName = qrisRecord ? qrisRecord.nama_rekening : 'QRIS';
+
+        const rawBotOwner = process.env.OWNER_WA_NUMBER || '';
+        const botOwnerNumber = rawBotOwner ? formatWaNumber(rawBotOwner) : null;
+
         const [sbResult] = await db.query('INSERT INTO bot_splitbill (total, bot_qris_id, status) VALUES (?, ?, ?)', [parsedData.total, qrisId, 'Selesai']);
         const sbId = sbResult.insertId;
         
-        let hutangPerOrang = {}; 
+        let itemsByParticipant = {};
         
         for (let index = 0; index < parsedData.items.length; index++) {
             const item = parsedData.items[index];
-            const nomor = assignments[index];
+            const rawNomor = assignments[index];
             
             await db.query('INSERT INTO bot_splitbill_items (splitbill_id, qty, nama_barang, harga_satuan, subtotal, wa_nomor_partisipan) VALUES (?, ?, ?, ?, ?, ?)', 
-            [sbId, item.qty, item.nama_barang, item.harga_satuan, item.subtotal, nomor === 'self' ? 'Saya Sendiri' : nomor]);
+            [sbId, item.qty, item.nama_barang, item.harga_satuan, item.subtotal, rawNomor === 'self' ? 'Saya Sendiri' : rawNomor]);
             
-            if (nomor !== 'self') {
-                if(!hutangPerOrang[nomor]) hutangPerOrang[nomor] = { items: [], total: 0 };
-                hutangPerOrang[nomor].items.push(item);
-                hutangPerOrang[nomor].total += item.subtotal;
+            const key = (rawNomor === 'self') ? 'self' : formatWaNumber(rawNomor);
+            if (!itemsByParticipant[key]) {
+                itemsByParticipant[key] = {
+                    rawNomor: rawNomor,
+                    key: key,
+                    items: [],
+                    total: 0
+                };
             }
+            itemsByParticipant[key].items.push(item);
+            itemsByParticipant[key].total += item.subtotal;
         }
         
         let qrisBase64 = null;
@@ -492,35 +683,113 @@ async function finishSplitBill(bot, chatId) {
             if (qrisFileName.endsWith('.png')) qrisMime = 'image/png';
         }
         
-        let staffId = 'bot'; // Session WA utama
-        
-        // === ANTI-BAN: Jadwalkan pengiriman dengan jeda 90 detik per penerima ===
-        // Pesan pertama dikirim 30 detik dari sekarang, berikutnya +90 detik
-        let scheduledDelayMs = 30 * 1000; // mulai 30 detik dari sekarang
-        const DELAY_PER_RECIPIENT_MS = 90 * 1000; // jeda 90 detik antar penerima
-        
-        for (const nomor in hutangPerOrang) {
-            const tagihan = hutangPerOrang[nomor];
-            let caption = `Halo! Ini rincian patungan / Split Bill kamu:\n\n`;
-            tagihan.items.forEach(it => {
-                caption += `- ${it.qty}x ${it.nama_barang}: Rp ${it.subtotal.toLocaleString('id-ID')}\n`;
-            });
-            caption += `\n*Total Tagihan: Rp ${tagihan.total.toLocaleString('id-ID')}*\n\nSilakan transfer ke QRIS berikut ya, terima kasih! 🙏`;
-            
-            // Hitung waktu jadwal pengiriman untuk nomor ini
+        let staffId = 'bot';
+        let scheduledDelayMs = 30 * 1000;
+        const DELAY_PER_RECIPIENT_MS = 90 * 1000;
+
+        let contactMap = {};
+        try {
+            const [kontaks] = await db.query('SELECT nama, nomor FROM bot_kontak');
+            if (kontaks && kontaks.length > 0) {
+                kontaks.forEach(k => {
+                    contactMap[k.nomor] = k.nama;
+                    const formatted = formatWaNumber(k.nomor);
+                    if (formatted) contactMap[formatted] = k.nama;
+                });
+            }
+        } catch (e) {
+            console.error('Error querying bot_kontak:', e);
+        }
+
+        async function resolveName(nomor) {
+            if (nomor === 'self') return 'Saya';
+            if (contactMap[nomor]) return contactMap[nomor];
+            const formatted = formatWaNumber(nomor);
+            if (contactMap[formatted]) return contactMap[formatted];
+            try {
+                const [rows] = await db.query('SELECT nama FROM bot_kontak WHERE nomor = ? OR nomor = ?', [nomor, formatted]);
+                if (rows && rows.length > 0) {
+                    contactMap[nomor] = rows[0].nama;
+                    return rows[0].nama;
+                }
+            } catch(e) {}
+            return nomor;
+        }
+
+        let recapLines = [];
+
+        for (const key in itemsByParticipant) {
+            const part = itemsByParticipant[key];
+            const isBotOwner = (key === 'self' || (botOwnerNumber && key === botOwnerNumber));
+            const isQrisOwner = (!isBotOwner && qrisOwnerNumber && key === qrisOwnerNumber);
+            const nama = await resolveName(part.rawNomor);
+            const itemCount = part.items.length;
+            const itemTotal = part.total;
+
+            if (isBotOwner) {
+                recapLines.push(`• Saya (Owner): ${itemCount} item = Rp ${itemTotal.toLocaleString('id-ID')}`);
+            } else if (isQrisOwner) {
+                let caption = `Halo ${nama}! 👋\n\nIni rincian belanjaanmu yang dibayar lewat QRIS kamu.\n\n`;
+                part.items.forEach(it => {
+                    caption += `- ${it.qty}x ${it.nama_barang}: Rp ${it.subtotal.toLocaleString('id-ID')}\n`;
+                });
+                caption += `\n*Total Tagihan: Rp ${itemTotal.toLocaleString('id-ID')}*`;
+
+                const scheduledAt = new Date(Date.now() + scheduledDelayMs);
+                const scheduledAtStr = scheduledAt.toISOString().slice(0, 19).replace('T', ' ');
+
+                await db.query(
+                    'INSERT INTO wa_outgoing (staff_id, wa_number, message, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?)',
+                    [staffId, part.key, caption, 'text', 'pending', scheduledAtStr]
+                );
+
+                console.log(`[SPLIT-BILL] Pesan QRIS Owner ke ${part.key} dijadwalkan pada ${scheduledAtStr}`);
+                scheduledDelayMs += DELAY_PER_RECIPIENT_MS;
+                recapLines.push(`• ${nama}: ${itemCount} item = Rp ${itemTotal.toLocaleString('id-ID')} 📋 Laporan saja`);
+            } else {
+                let caption = `Halo ${nama}! 👋\n\nIni rincian patungan / Split Bill kamu:\n\n`;
+                part.items.forEach(it => {
+                    caption += `- ${it.qty}x ${it.nama_barang}: Rp ${it.subtotal.toLocaleString('id-ID')}\n`;
+                });
+                caption += `\n*Total Tagihan: Rp ${itemTotal.toLocaleString('id-ID')}*\n\nSilakan transfer ke QRIS berikut ya, terima kasih! 🙏`;
+
+                const scheduledAt = new Date(Date.now() + scheduledDelayMs);
+                const scheduledAtStr = scheduledAt.toISOString().slice(0, 19).replace('T', ' ');
+
+                if (qrisBase64) {
+                    await db.query(
+                        'INSERT INTO wa_outgoing (staff_id, wa_number, message, file_name, file_mime, file_data, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        [staffId, part.key, caption, qrisFileName, qrisMime, qrisBase64, 'file', 'pending', scheduledAtStr]
+                    );
+                } else {
+                    await db.query(
+                        'INSERT INTO wa_outgoing (staff_id, wa_number, message, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?)',
+                        [staffId, part.key, caption, 'text', 'pending', scheduledAtStr]
+                    );
+                }
+
+                console.log(`[SPLIT-BILL] Pesan ke ${part.key} dijadwalkan pada ${scheduledAtStr}`);
+                scheduledDelayMs += DELAY_PER_RECIPIENT_MS;
+                recapLines.push(`• ${nama}: ${itemCount} item = Rp ${itemTotal.toLocaleString('id-ID')} ✅ Terkirim`);
+            }
+        }
+
+        const destOwnerNumber = botOwnerNumber || (process.env.OWNER_WA_NUMBER ? formatWaNumber(process.env.OWNER_WA_NUMBER) : null);
+        if (destOwnerNumber) {
+            const dateStr = new Date().toLocaleString('id-ID');
+            let recapMsg = `📊 Laporan Split Bill — ${dateStr}\n\n`;
+            recapMsg += recapLines.join('\n');
+            recapMsg += `\n\nTotal keseluruhan: Rp ${parsedData.total.toLocaleString('id-ID')}\n`;
+            recapMsg += `QRIS: ${qrisName}`;
+
             const scheduledAt = new Date(Date.now() + scheduledDelayMs);
             const scheduledAtStr = scheduledAt.toISOString().slice(0, 19).replace('T', ' ');
-            
-            if (qrisBase64) {
-                await db.query('INSERT INTO wa_outgoing (staff_id, wa_number, message, file_name, file_mime, file_data, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [staffId, nomor, caption, qrisFileName, qrisMime, qrisBase64, 'file', 'pending', scheduledAtStr]);
-            } else {
-                await db.query('INSERT INTO wa_outgoing (staff_id, wa_number, message, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?)',
-                [staffId, nomor, caption, 'text', 'pending', scheduledAtStr]);
-            }
-            
-            console.log(`[SPLIT-BILL] Pesan ke ${nomor} dijadwalkan pada ${scheduledAtStr}`);
-            scheduledDelayMs += DELAY_PER_RECIPIENT_MS; // tambah jeda untuk penerima berikutnya
+
+            await db.query(
+                'INSERT INTO wa_outgoing (staff_id, wa_number, message, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?)',
+                [staffId, destOwnerNumber, recapMsg, 'text', 'pending', scheduledAtStr]
+            );
+            console.log(`[SPLIT-BILL] Laporan Recap Owner ke ${destOwnerNumber} dijadwalkan pada ${scheduledAtStr}`);
         }
         
         clearState(chatId);
@@ -532,4 +801,13 @@ async function finishSplitBill(bot, chatId) {
     }
 }
 
-module.exports = { handleStart, handleMessage, handleCallbackQuery, handlePhoto };
+module.exports = {
+    handleStart,
+    handleMessage,
+    handleCallbackQuery,
+    handlePhoto,
+    showAssignMenu,
+    showParticipantMenu,
+    showPersonItemMenu
+};
+
