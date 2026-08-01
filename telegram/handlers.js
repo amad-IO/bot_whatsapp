@@ -747,30 +747,49 @@ async function finishSplitBill(bot, chatId) {
                 scheduledDelayMs += DELAY_PER_RECIPIENT_MS;
                 recapLines.push(`• ${nama}: ${itemCount} item = Rp ${itemTotal.toLocaleString('id-ID')} 📋 Laporan saja`);
             } else {
-                let caption = `Halo ${nama}! 👋\n\nIni rincian patungan / Split Bill kamu:\n\n`;
-                part.items.forEach(it => {
-                    caption += `- ${it.qty}x ${it.nama_barang}: Rp ${it.subtotal.toLocaleString('id-ID')}\n`;
-                });
-                caption += `\n*Total Tagihan: Rp ${itemTotal.toLocaleString('id-ID')}*\n\nSilakan transfer ke QRIS berikut ya, terima kasih! 🙏`;
-
-                const scheduledAt = new Date(Date.now() + scheduledDelayMs);
-                const scheduledAtStr = scheduledAt.toISOString().slice(0, 19).replace('T', ' ');
-
-                if (qrisBase64) {
-                    await db.query(
-                        'INSERT INTO wa_outgoing (staff_id, wa_number, message, file_name, file_mime, file_data, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                        [staffId, part.key, caption, qrisFileName, qrisMime, qrisBase64, 'file', 'pending', scheduledAtStr]
+                // ── OPT-IN CHECK: skip if recipient never messaged bot first ──
+                let hasOptedIn = false;
+                try {
+                    const [optRows] = await db.query(
+                        'SELECT COUNT(*) as cnt FROM wa_incoming WHERE from_number = ? LIMIT 1',
+                        [part.key]
                     );
-                } else {
-                    await db.query(
-                        'INSERT INTO wa_outgoing (staff_id, wa_number, message, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?)',
-                        [staffId, part.key, caption, 'text', 'pending', scheduledAtStr]
-                    );
+                    hasOptedIn = optRows[0].cnt > 0;
+                } catch(e) {
+                    // Jika tabel wa_incoming tidak ada, fallback: kirim tetapi log warning
+                    console.warn(`[SPLIT-BILL] Tabel wa_incoming tidak ditemukan, opt-in check dilewati untuk ${part.key}`);
+                    hasOptedIn = true;
                 }
 
-                console.log(`[SPLIT-BILL] Pesan ke ${part.key} dijadwalkan pada ${scheduledAtStr}`);
-                scheduledDelayMs += DELAY_PER_RECIPIENT_MS;
-                recapLines.push(`• ${nama}: ${itemCount} item = Rp ${itemTotal.toLocaleString('id-ID')} ✅ Terkirim`);
+                if (!hasOptedIn) {
+                    console.warn(`[SPLIT-BILL] SKIP: ${part.key} (${nama}) belum opt-in (belum pernah kirim pesan ke bot). Tidak dikirim.`);
+                    recapLines.push(`• ${nama}: ${itemCount} item = Rp ${itemTotal.toLocaleString('id-ID')} ⚠️ BELUM OPT-IN (tidak dikirim)`);
+                } else {
+                    let caption = `Halo ${nama}! 👋\n\nIni rincian patungan / Split Bill kamu:\n\n`;
+                    part.items.forEach(it => {
+                        caption += `- ${it.qty}x ${it.nama_barang}: Rp ${it.subtotal.toLocaleString('id-ID')}\n`;
+                    });
+                    caption += `\n*Total Tagihan: Rp ${itemTotal.toLocaleString('id-ID')}*\n\nSilakan transfer ke QRIS berikut ya, terima kasih! 🙏`;
+
+                    const scheduledAt = new Date(Date.now() + scheduledDelayMs);
+                    const scheduledAtStr = scheduledAt.toISOString().slice(0, 19).replace('T', ' ');
+
+                    if (qrisBase64) {
+                        await db.query(
+                            'INSERT INTO wa_outgoing (staff_id, wa_number, message, file_name, file_mime, file_data, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                            [staffId, part.key, caption, qrisFileName, qrisMime, qrisBase64, 'file', 'pending', scheduledAtStr]
+                        );
+                    } else {
+                        await db.query(
+                            'INSERT INTO wa_outgoing (staff_id, wa_number, message, msg_type, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?)',
+                            [staffId, part.key, caption, 'text', 'pending', scheduledAtStr]
+                        );
+                    }
+
+                    console.log(`[SPLIT-BILL] Pesan ke ${part.key} dijadwalkan pada ${scheduledAtStr}`);
+                    scheduledDelayMs += DELAY_PER_RECIPIENT_MS;
+                    recapLines.push(`• ${nama}: ${itemCount} item = Rp ${itemTotal.toLocaleString('id-ID')} ✅ Terkirim`);
+                }
             }
         }
 
