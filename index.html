@@ -1,1208 +1,373 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
-  <title>WA Gateway — Self-hosted WhatsApp Gateway for Multiple Staff</title>
+  <title>WA Gateway — Open Source WhatsApp API</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Self-hosted WhatsApp gateway supporting multiple staff accounts with queue, scheduling, webhooks, and real-time dashboard. Built on whatsapp-web.js. Open source, free forever.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Poppins', 'sans-serif'] },
+          colors: { brand: '#000000', bgLight: '#f4f5f7' }
+        }
+      }
+    }
+  </script>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg: #ffffff;
-      --fg: #0f0f0f;
-      --muted: #6b6b6b;
-      --border: #e8e8e8;
-      --accent: #25d366;
-      --accent-muted: #e8f9ef;
-      --accent-text: #1a9d4a;
-      --sky: #b8d4f0;
-      --sky-light: #eaf3fb;
-      --dark: #0f0f0f;
-      --dark-2: #1a1a1a;
-      --radius-pill: 9999px;
-      --radius-card: 1.5rem;
-      --radius-sm: 0.75rem;
-      --font-head: 'Syne', sans-serif;
-      --font-body: 'Inter', sans-serif;
+    html, body {
+      max-width: 100vw;
+      overflow-x: hidden;
     }
-
-    html { scroll-behavior: smooth; }
-
     body {
-      background: var(--bg);
-      color: var(--fg);
-      font-family: var(--font-body);
-      font-size: 16px;
-      line-height: 1.6;
+      font-family: 'Poppins', sans-serif;
       -webkit-font-smoothing: antialiased;
+      background-color: #fff;
     }
 
-    /* ── NAVBAR ── */
-    nav {
-      position: sticky;
-      top: 1.25rem;
-      z-index: 100;
-      display: flex;
-      justify-content: center;
-      padding: 0 1.5rem;
+    /* Nav */
+    .glass-nav {
+      background: rgba(255, 255, 255, 0.4);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.6);
     }
 
-    .nav-inner {
-      background: rgba(255,255,255,0.92);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-pill);
-      padding: 0.6rem 1.25rem;
-      display: flex;
-      align-items: center;
-      gap: 2.5rem;
-      max-width: 900px;
-      width: 100%;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
-    }
-
-    .nav-logo {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-family: var(--font-head);
-      font-weight: 700;
-      font-size: 1rem;
-      color: var(--fg);
-      text-decoration: none;
-      flex-shrink: 0;
-    }
-
-    .nav-logo .logo-icon {
-      width: 30px;
-      height: 30px;
-      background: var(--accent);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-    }
-
-    .nav-links {
-      display: flex;
-      align-items: center;
-      gap: 2rem;
-      flex: 1;
-      justify-content: center;
-    }
-
-    .nav-links a {
-      font-size: 0.875rem;
-      color: var(--muted);
-      text-decoration: none;
-      font-weight: 500;
-      transition: color 0.2s;
-    }
-
-    .nav-links a:hover { color: var(--fg); }
-
-    .nav-actions {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      flex-shrink: 0;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      padding: 0.5rem 1.1rem;
-      border-radius: var(--radius-pill);
-      font-size: 0.8125rem;
-      font-weight: 600;
-      text-decoration: none;
-      transition: all 0.2s ease;
-      cursor: pointer;
-      border: none;
-      font-family: var(--font-body);
-    }
-
-    .btn-dark {
-      background: var(--dark);
-      color: #fff;
-    }
-    .btn-dark:hover { background: var(--dark-2); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-
-    .btn-outline {
-      background: transparent;
-      color: var(--fg);
-      border: 1.5px solid var(--border);
-    }
-    .btn-outline:hover { border-color: #999; background: #f5f5f5; }
-
-    .btn-ghost {
-      background: transparent;
-      color: var(--muted);
-      padding: 0.5rem 0.875rem;
-    }
-    .btn-ghost:hover { color: var(--fg); }
-
-    .btn-lg {
-      padding: 0.875rem 1.75rem;
-      font-size: 0.9375rem;
-    }
-
-    /* ── HERO ── */
-    .hero {
-      margin: 1.5rem 1.5rem 0;
-      border-radius: 2rem;
-      overflow: hidden;
+    /* Hero Section */
+    .hero-section {
       position: relative;
-      min-height: 580px;
+      width: 100%;
+      min-height: 100vh;
+      overflow: hidden;
       display: flex;
-      align-items: flex-end;
+      align-items: center;
+      padding-top: 6rem;
     }
 
-    .hero-img {
+    /* Simulate the sky/turbine background from Aerora */
+    .hero-bg {
       position: absolute;
       inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      object-position: center;
+      background: linear-gradient(to bottom, #d6e8f9 0%, #f0f6fc 100%);
+      z-index: -2;
     }
 
-    .hero-overlay {
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(
-        135deg,
-        rgba(15,15,15,0.75) 0%,
-        rgba(15,15,15,0.3) 50%,
-        rgba(15,15,15,0.5) 100%
-      );
-    }
-
-    .hero-content {
-      position: relative;
-      z-index: 2;
-      padding: 3.5rem;
-      width: 100%;
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 2rem;
-    }
-
-    .hero-title {
-      font-family: var(--font-head);
-      font-size: clamp(3.5rem, 9vw, 7.5rem);
-      font-weight: 800;
-      color: #ffffff;
-      line-height: 0.95;
-      letter-spacing: -0.02em;
-    }
-
-    .hero-right {
-      max-width: 360px;
-      flex-shrink: 0;
-    }
-
-    .hero-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      background: rgba(255,255,255,0.12);
-      border: 1px solid rgba(255,255,255,0.2);
-      color: rgba(255,255,255,0.9);
-      font-size: 0.75rem;
-      font-weight: 500;
-      padding: 0.35rem 0.85rem;
-      border-radius: var(--radius-pill);
-      margin-bottom: 1rem;
-      backdrop-filter: blur(8px);
-    }
-
-    .hero-badge .dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-    }
-
-    .hero-desc {
-      font-size: 0.9375rem;
-      color: rgba(255,255,255,0.75);
-      line-height: 1.65;
-      margin-bottom: 1.75rem;
-    }
-
-    .hero-cta {
-      display: flex;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-    }
-
-    /* ── SECTION UTILS ── */
-    .section {
-      padding: 6rem 1.5rem;
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-
-    .section-full {
-      padding: 6rem 1.5rem;
-    }
-
-    .section-full .inner {
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-
-    .label {
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--accent-text);
-      margin-bottom: 1rem;
-    }
-
-    .section-title {
-      font-family: var(--font-head);
-      font-size: clamp(2rem, 4vw, 3.25rem);
-      font-weight: 800;
-      line-height: 1.1;
-      letter-spacing: -0.02em;
-      color: var(--fg);
-    }
-
-    .section-sub {
-      font-size: 1rem;
-      color: var(--muted);
-      max-width: 520px;
-      line-height: 1.65;
-      margin-top: 0.75rem;
-    }
-
-    hr.divider {
-      border: none;
-      border-top: 1px solid var(--border);
-      margin: 0 1.5rem;
-    }
-
-    /* ── ABOUT SECTION ── */
-    .about-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 5rem;
-      align-items: center;
-      margin-top: 4rem;
-    }
-
-    .about-stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1.5rem;
-    }
-
-    .stat-card {
-      background: var(--sky-light);
-      border-radius: var(--radius-card);
-      padding: 1.75rem 1.5rem;
-    }
-
-    .stat-number {
-      font-family: var(--font-head);
-      font-size: 3rem;
-      font-weight: 800;
-      color: var(--fg);
-      line-height: 1;
-    }
-
-    .stat-label {
-      font-size: 0.8125rem;
-      color: var(--muted);
-      margin-top: 0.35rem;
-    }
-
-    /* ── FEATURES ── */
-    .features-bg {
-      background: #f7f7f7;
-    }
-
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1px;
-      background: var(--border);
-      border-radius: var(--radius-card);
-      overflow: hidden;
-      margin-top: 3.5rem;
-    }
-
-    .feature-card {
-      background: #fff;
-      padding: 2rem;
-      transition: background 0.2s;
-    }
-
-    .feature-card:hover { background: var(--sky-light); }
-
-    .feature-num {
-      font-family: var(--font-head);
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: var(--muted);
-      letter-spacing: 0.08em;
-      margin-bottom: 1.25rem;
-      display: block;
-    }
-
-    .feature-icon {
-      width: 40px;
-      height: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-      margin-bottom: 1rem;
-    }
-
-    .feature-title {
-      font-family: var(--font-head);
-      font-size: 1.0625rem;
-      font-weight: 700;
-      margin-bottom: 0.5rem;
-      color: var(--fg);
-    }
-
-    .feature-desc {
-      font-size: 0.8375rem;
-      color: var(--muted);
-      line-height: 1.6;
-    }
-
-    .feature-desc code {
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      font-size: 0.75rem;
-      background: #efefef;
-      padding: 0.1em 0.4em;
-      border-radius: 4px;
-      color: var(--accent-text);
-    }
-
-    /* ── HOW IT WORKS ── */
-    .how-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 2rem;
-      margin-bottom: 4rem;
-    }
-
-    .steps-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 2rem;
-    }
-
-    .step-card {
-      border: 1px solid var(--border);
-      border-radius: var(--radius-card);
-      padding: 2rem;
-      position: relative;
-    }
-
-    .step-num-badge {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: var(--dark);
-      color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: var(--font-head);
-      font-size: 0.8125rem;
-      font-weight: 700;
-      margin-bottom: 1.25rem;
-      flex-shrink: 0;
-    }
-
-    .step-num-badge.outline {
-      background: transparent;
-      border: 1.5px solid var(--border);
-      color: var(--muted);
-    }
-
-    .step-card-title {
-      font-family: var(--font-head);
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: var(--fg);
-      margin-bottom: 0.75rem;
-    }
-
-    .step-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-
-    .step-list li {
-      display: flex;
-      gap: 0.75rem;
-      font-size: 0.875rem;
-      color: #444;
-      align-items: flex-start;
-    }
-
-    .step-list li .idx {
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: var(--sky-light);
-      color: var(--accent-text);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.7rem;
-      font-weight: 700;
-      flex-shrink: 0;
-      margin-top: 1px;
-    }
-
-    .step-list code {
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      font-size: 0.75rem;
-      background: #f0f0f0;
-      padding: 0.1em 0.4em;
-      border-radius: 4px;
-      color: var(--accent-text);
-    }
-
-    /* ── QUICK START ── */
-    .quickstart-bg { background: #f7f7f7; }
-
-    .qs-steps {
-      display: flex;
-      flex-direction: column;
-      gap: 1.25rem;
-      margin-top: 3rem;
-    }
-
-    .qs-step {
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-card);
-      padding: 1.75rem 2rem;
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 1.5rem;
-      align-items: start;
-    }
-
-    .qs-num {
-      font-family: var(--font-head);
-      font-size: 2rem;
-      font-weight: 800;
-      color: #e0e0e0;
-      line-height: 1;
-      min-width: 48px;
-    }
-
-    .qs-title {
-      font-family: var(--font-head);
-      font-size: 1rem;
-      font-weight: 700;
-      color: var(--fg);
-      margin-bottom: 0.75rem;
-    }
-
-    .code-block {
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 0.75rem;
-      padding: 1.25rem 1.5rem;
-      font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
-      font-size: 0.8125rem;
-      color: #c9d1d9;
-      overflow-x: auto;
-      line-height: 1.7;
-    }
-
-    /* ── API OVERVIEW ── */
-    .api-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 1.5rem;
-      margin-top: 3rem;
-    }
-
-    .api-card {
-      border: 1px solid var(--border);
-      border-radius: var(--radius-card);
-      padding: 1.75rem;
-    }
-
-    .api-card-title {
-      font-family: var(--font-head);
-      font-size: 0.8125rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      margin-bottom: 1.25rem;
-    }
-
-    .api-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.6rem;
-    }
-
-    .api-item {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      font-size: 0.8125rem;
-      font-family: 'SF Mono', 'Fira Code', monospace;
-    }
-
-    .method {
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-      font-size: 0.7rem;
-      font-weight: 700;
-      font-family: var(--font-body);
-      flex-shrink: 0;
-    }
-
-    .method-post { background: #e8f9ef; color: #1a9d4a; }
-    .method-get  { background: #eaf3fb; color: #2a7ab8; }
-
-    .api-path { color: #444; }
-
-    /* ── ARCH SECTION ── */
-    .arch-box {
-      background: #f7f7f7;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-card);
-      padding: 2.5rem;
-      margin-top: 2rem;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: center;
-      gap: 1rem;
-    }
-
-    .arch-node {
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 0.75rem;
-      padding: 1rem 1.5rem;
-      text-align: center;
-    }
-
-    .arch-node.highlight {
-      background: var(--accent-muted);
-      border-color: #9de8b8;
-    }
-
-    .arch-node p:first-child { font-size: 0.7rem; color: var(--muted); margin-bottom: 0.25rem; }
-    .arch-node p:last-child { font-family: var(--font-head); font-size: 0.9rem; font-weight: 700; }
-
-    .arch-arrow { font-size: 1.25rem; color: var(--accent-text); }
-
-    /* ── TECH STACK ── */
-    .stack-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-      margin-top: 2rem;
-      justify-content: center;
-    }
-
-    .stack-pill {
-      background: #f0f0f0;
-      color: var(--fg);
-      border-radius: var(--radius-pill);
-      padding: 0.55rem 1.25rem;
-      font-size: 0.875rem;
-      font-weight: 500;
-      border: 1px solid var(--border);
-      transition: all 0.2s;
-    }
-
-    .stack-pill:hover { background: var(--dark); color: #fff; border-color: var(--dark); }
-
-    /* ── CTA / FOOTER ── */
-    .footer-dark {
-      background: var(--dark);
-      color: #fff;
-      margin: 1.5rem 1.5rem 1.5rem;
-      border-radius: 2rem;
-      padding: 4rem 3.5rem 3rem;
-    }
-
-    .footer-top {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 3rem;
-      align-items: start;
-      margin-bottom: 3rem;
-      padding-bottom: 3rem;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-
-    .footer-cta-text {
-      font-family: var(--font-head);
-      font-size: clamp(1.5rem, 3vw, 2.25rem);
-      font-weight: 800;
-      line-height: 1.2;
-      max-width: 500px;
-    }
-
-    .footer-cta-sub {
-      font-size: 0.9rem;
-      color: rgba(255,255,255,0.5);
-      margin-top: 0.75rem;
-    }
-
-    .footer-cta-btns {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      align-items: flex-end;
-    }
-
-    .btn-white {
-      background: #fff;
-      color: var(--dark);
-      border-radius: var(--radius-pill);
-      padding: 0.75rem 1.5rem;
-      font-size: 0.875rem;
-      font-weight: 600;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      transition: all 0.2s;
-    }
-    .btn-white:hover { background: #f0f0f0; transform: translateY(-1px); }
-
-    .btn-ghost-white {
-      color: rgba(255,255,255,0.6);
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: var(--radius-pill);
-      padding: 0.75rem 1.5rem;
-      font-size: 0.875rem;
-      font-weight: 600;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      transition: all 0.2s;
-    }
-    .btn-ghost-white:hover { color: #fff; border-color: rgba(255,255,255,0.4); }
-
-    .footer-brand {
-      font-family: var(--font-head);
-      font-size: clamp(3rem, 10vw, 7rem);
-      font-weight: 800;
-      color: rgba(255,255,255,0.08);
-      letter-spacing: -0.03em;
-      line-height: 1;
-      margin-bottom: 2.5rem;
-      user-select: none;
-    }
-
-    .footer-bottom {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 1.5rem;
-    }
-
-    .footer-logo {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-family: var(--font-head);
-      font-weight: 700;
-      font-size: 0.9rem;
-      color: #fff;
-    }
-
-    .footer-links {
-      display: flex;
-      gap: 1.75rem;
-    }
-
-    .footer-links a {
-      font-size: 0.8125rem;
-      color: rgba(255,255,255,0.45);
-      text-decoration: none;
-      transition: color 0.2s;
-    }
-    .footer-links a:hover { color: rgba(255,255,255,0.9); }
-
-    .footer-copy {
-      font-size: 0.75rem;
-      color: rgba(255,255,255,0.25);
-      margin-top: 1.5rem;
-      text-align: right;
-    }
-
-    /* ── RESPONSIVE ── */
-    @media (max-width: 768px) {
-      .nav-links { display: none; }
-      .hero { min-height: 480px; }
-      .hero-content { flex-direction: column; align-items: flex-start; padding: 2rem; }
-      .hero-right { max-width: 100%; }
-      .about-grid { grid-template-columns: 1fr; gap: 2.5rem; }
-      .features-grid { grid-template-columns: 1fr; }
-      .steps-grid { grid-template-columns: 1fr; }
-      .api-grid { grid-template-columns: 1fr; }
-      .footer-dark { margin: 1rem; padding: 2.5rem 1.75rem 2rem; border-radius: 1.5rem; }
-      .footer-top { grid-template-columns: 1fr; }
-      .footer-cta-btns { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
-      .footer-brand { font-size: 3rem; }
-      .footer-bottom { flex-direction: column; align-items: flex-start; }
-      .how-header { flex-direction: column; }
-    }
-
-    /* Scroll animations */
+    /* ── SCROLL ANIMATIONS ── */
     @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(24px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
-    .fade-up { animation: fadeUp 0.65s ease forwards; }
-    .delay-1 { animation-delay: 0.1s; opacity: 0; }
-    .delay-2 { animation-delay: 0.2s; opacity: 0; }
-    .delay-3 { animation-delay: 0.3s; opacity: 0; }
+
+    .fade-up {
+      animation: fadeUp 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
   </style>
 </head>
-<body>
 
-  <!-- ══ NAVBAR ══════════════════════════════════════════════════════ -->
-  <nav>
-    <div class="nav-inner">
-      <a href="#" class="nav-logo">
-        <div class="logo-icon">📱</div>
-        WA Gateway
-      </a>
-      <div class="nav-links">
-        <a href="#about">About</a>
-        <a href="#features">Features</a>
-        <a href="#how-it-works">How it works</a>
-        <a href="#quickstart">Quick Start</a>
-        <a href="#api">API</a>
+<body class="overflow-x-hidden">
+
+  <div class="fixed top-6 left-0 right-0 z-50 flex justify-center px-4 fade-up">
+    <nav class="glass-nav rounded-full px-6 md:px-8 py-3 flex items-center justify-between w-full max-w-6xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] relative">
+      <div class="font-bold text-xl tracking-tighter flex items-center gap-2">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+        </svg>
+        Gateway
       </div>
-      <div class="nav-actions">
-        <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank" class="btn btn-outline">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-          GitHub
+
+      <!-- Desktop Menu -->
+      <div class="hidden md:flex items-center gap-8 text-sm font-semibold text-gray-700">
+        <a href="#home" class="hover:text-black transition-colors">Home</a>
+        <a href="#about" class="hover:text-black transition-colors">About Us</a>
+        <a href="#features" class="hover:text-black transition-colors">Features</a>
+        <a href="api-docs.html" class="hover:text-black transition-colors">API Docs</a>
+      </div>
+
+      <div class="hidden md:block">
+        <a href="main-dashboard.html" class="bg-black text-white px-6 py-2.5 rounded-full text-sm font-bold hover:bg-gray-800 transition-colors">
+          Dashboard
         </a>
-        <a href="main-dashboard.html" class="btn btn-dark">Dashboard →</a>
       </div>
-    </div>
-  </nav>
 
-  <!-- ══ HERO ═══════════════════════════════════════════════════════ -->
-  <section class="hero fade-up">
-    <img src="hero.jpg" alt="WA Gateway — WhatsApp messaging infrastructure" class="hero-img">
-    <div class="hero-overlay"></div>
-    <div class="hero-content">
-      <h1 class="hero-title">WA<br>Gateway</h1>
-      <div class="hero-right">
-        <div class="hero-badge">
-          <span class="dot"></span>
-          Self-hosted · Open source · Free forever
-        </div>
-        <p class="hero-desc">
-          Connect unlimited WhatsApp accounts, queue messages, schedule delivery, and receive webhooks — all from a single Node.js server you control.
+      <!-- Hamburger Button -->
+      <button id="mobile-menu-btn" class="md:hidden text-gray-900 focus:outline-none">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+      </button>
+      
+      <!-- Mobile Dropdown -->
+      <div id="mobile-menu" class="hidden absolute top-full left-0 right-0 mt-2 bg-white/95 backdrop-blur-xl border border-gray-100 rounded-3xl shadow-xl p-6 flex flex-col gap-6 text-center">
+        <a href="#home" class="text-base font-semibold text-gray-700 hover:text-black">Home</a>
+        <a href="#about" class="text-base font-semibold text-gray-700 hover:text-black">About Us</a>
+        <a href="#features" class="text-base font-semibold text-gray-700 hover:text-black">Features</a>
+        <a href="api-docs.html" class="text-base font-semibold text-gray-700 hover:text-black">API Docs</a>
+        <a href="main-dashboard.html" class="bg-black text-white px-6 py-3 rounded-full text-sm font-bold mx-auto w-full max-w-[200px]">Dashboard</a>
+      </div>
+    </nav>
+  </div>
+  
+  <script>
+    document.getElementById('mobile-menu-btn').addEventListener('click', function() {
+      const menu = document.getElementById('mobile-menu');
+      menu.classList.toggle('hidden');
+    });
+    // Close mobile menu when clicking a link
+    document.querySelectorAll('#mobile-menu a').forEach(link => {
+      link.addEventListener('click', () => {
+        document.getElementById('mobile-menu').classList.add('hidden');
+      });
+    });
+  </script>
+
+  <!-- ══ HERO SECTION ════════════════════════════════════════════════ -->
+  <section id="home" class="hero-section">
+    <div class="hero-bg"></div>
+    <div class="max-w-7xl mx-auto px-6 w-full grid grid-cols-1 lg:grid-cols-2 gap-12 items-center z-10 pb-12">
+
+      <!-- Left Content -->
+      <div class="fade-up" style="animation-delay: 0.2s;">
+        <h1 class="text-6xl md:text-7xl lg:text-[5.5rem] font-bold tracking-tighter text-gray-900 leading-[1.05] mb-6">
+          Gateway
+        </h1>
+        <p class="text-gray-600 text-lg md:text-xl font-medium leading-relaxed mb-8 max-w-lg">
+          Start your journey towards a seamless communication future with our open-source API. Make positive changes for
+          your customer support and notifications.
         </p>
-        <div class="hero-cta">
-          <a href="#quickstart" class="btn btn-dark btn-lg">Get Started →</a>
-          <a href="main-dashboard.html" style="background:rgba(255,255,255,0.15);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2);color:#fff;" class="btn btn-lg">Live Dashboard</a>
+        <div class="flex flex-wrap gap-4">
+          <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank"
+            class="bg-black hover:bg-gray-800 text-white px-8 py-3.5 rounded-full text-sm font-bold shadow-lg shadow-black/10 transition-all hover:-translate-y-0.5">
+            GitHub Repo
+          </a>
+          <a href="api-docs.html"
+            class="bg-white/80 hover:bg-white text-black px-8 py-3.5 rounded-full text-sm font-bold shadow-lg shadow-black/5 transition-all hover:-translate-y-0.5 border border-white">
+            API Docs
+          </a>
         </div>
+      </div>
+
+      <!-- Right Image -->
+      <div class="fade-up relative flex justify-center" style="animation-delay: 0.4s;">
+        <div class="absolute inset-0 bg-blue-200/50 rounded-full blur-3xl -z-10 scale-90"></div>
+        <img src="hero.jpg" alt="App Interface"
+          class="w-full max-w-lg rounded-[2.5rem] shadow-2xl border-8 border-white object-cover aspect-[3/4]">
       </div>
     </div>
   </section>
 
-  <!-- ══ ABOUT ═══════════════════════════════════════════════════════ -->
-  <section class="section" id="about">
-    <div class="label">About</div>
-    <div class="about-grid">
-      <div>
-        <h2 class="section-title">A complete WhatsApp messaging infrastructure — on your own server.</h2>
-        <p class="section-sub">WA Gateway is a self-hosted, open-source platform that gives your team full control over WhatsApp messaging. Built on <strong>whatsapp-web.js</strong> and <strong>Express + Socket.IO</strong>, it runs anywhere Node.js runs.</p>
-        <div style="margin-top:2rem;display:flex;gap:1rem;flex-wrap:wrap;">
-          <a href="#quickstart" class="btn btn-dark btn-lg">Deploy Now →</a>
-          <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank" class="btn btn-outline btn-lg">View Source</a>
-        </div>
-      </div>
-      <div class="about-stats">
-        <div class="stat-card">
-          <div class="stat-number">∞</div>
-          <div class="stat-label">Staff accounts</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number">16+</div>
-          <div class="stat-label">REST endpoints</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number">3</div>
-          <div class="stat-label">Message types</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number">$0</div>
-          <div class="stat-label">Monthly cost</div>
-        </div>
-      </div>
+  <!-- ══ ABOUT US (Centered Huge Text) ═══════════════════════════════ -->
+  <section id="about" class="py-32 px-6">
+    <div class="max-w-4xl mx-auto text-center">
+      <p class="text-sm font-bold text-blue-500 uppercase tracking-widest mb-6">About Us</p>
+      <h2 class="text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.1] mb-12">
+        WA Gateway is a forward thinking open source project on a mission to power cleaner, more reliable chat
+        automation
+      </h2>
+      <p class="text-xl text-gray-500 font-light max-w-2xl mx-auto">
+        Whether you're looking to automate customer service, lower your API costs, or invest in a scalable self-hosted
+        infrastructure.
+      </p>
     </div>
   </section>
 
-  <hr class="divider">
-
-  <!-- ══ FEATURES ════════════════════════════════════════════════════ -->
-  <section class="section-full features-bg" id="features">
-    <div class="inner">
-      <div class="label">Features</div>
-      <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:1rem;">
-        <h2 class="section-title">Everything you need<br>in one server.</h2>
-        <p style="font-size:0.9rem;color:var(--muted);max-width:300px;line-height:1.6;">A complete WhatsApp messaging infrastructure. Self-hosted, zero monthly fees.</p>
+  <!-- ══ FLOATING IMAGES & STEPS ═════════════════════════════════════ -->
+  <section class="py-20 px-6 overflow-hidden">
+    <!-- Floating polaroid-style images -->
+    <div class="flex justify-center gap-6 mb-32 -rotate-2 scale-105">
+      <img src="hero.jpg"
+        class="w-64 h-80 object-cover rounded-[2rem] shadow-2xl -rotate-6 transform translate-y-12 border-8 border-white"
+        alt="Image 1">
+      <div
+        class="w-72 h-96 rounded-[2rem] shadow-2xl z-10 border-8 border-white bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center p-6 text-center">
+        <h3 class="text-3xl font-bold text-white leading-tight">Scale your<br>messages<br>effortlessly.</h3>
       </div>
-
-      <div class="features-grid">
-        <div class="feature-card">
-          <span class="feature-num">01</span>
-          <div class="feature-icon">👥</div>
-          <h3 class="feature-title">Multi-Staff Support</h3>
-          <p class="feature-desc">Each staff gets an isolated WhatsApp session identified by a free-form <code>staff_id</code>. No limit on number of accounts.</p>
-        </div>
-        <div class="feature-card">
-          <span class="feature-num">02</span>
-          <div class="feature-icon">📋</div>
-          <h3 class="feature-title">Message Queue</h3>
-          <p class="feature-desc">Insert messages into MySQL and deliver via cron trigger. Supports text, PDF, and media. Auto-retry up to configurable max attempts.</p>
-        </div>
-        <div class="feature-card">
-          <span class="feature-num">03</span>
-          <div class="feature-icon">🗓️</div>
-          <h3 class="feature-title">Scheduled Messages</h3>
-          <p class="feature-desc">Set <code>scheduled_at</code> on any queued message. The cron processor delivers only when the time arrives.</p>
-        </div>
-        <div class="feature-card">
-          <span class="feature-num">04</span>
-          <div class="feature-icon">🔗</div>
-          <h3 class="feature-title">Outgoing Webhooks</h3>
-          <p class="feature-desc">Set <code>WEBHOOK_URL</code> to receive incoming messages and delivery ACKs (sent / delivered / read) pushed to your system instantly.</p>
-        </div>
-        <div class="feature-card">
-          <span class="feature-num">05</span>
-          <div class="feature-icon">✅</div>
-          <h3 class="feature-title">Delivery Tracking</h3>
-          <p class="feature-desc">Real-time ACK events update each message status in DB: <code>sent → delivered → read</code>. Queryable via API or visible in dashboard.</p>
-        </div>
-        <div class="feature-card">
-          <span class="feature-num">06</span>
-          <div class="feature-icon">📊</div>
-          <h3 class="feature-title">Real-time Dashboard</h3>
-          <p class="feature-desc">Socket.IO-powered unified dashboard: stats, live feed, send messages, manage queue, view incoming, edit templates — all in one page.</p>
-        </div>
-        <div class="feature-card">
-          <span class="feature-num">07</span>
-          <div class="feature-icon">🔐</div>
-          <h3 class="feature-title">API Key Auth</h3>
-          <p class="feature-desc">Optional API key protection on all <code>/api/*</code> endpoints via <code>x-api-key</code> header, Bearer token, or query param.</p>
-        </div>
-        <div class="feature-card">
-          <span class="feature-num">08</span>
-          <div class="feature-icon">🛡️</div>
-          <h3 class="feature-title">Rate Limiting</h3>
-          <p class="feature-desc">30 req/min limit on direct-send endpoints. Configurable random delay between queue messages to mimic human behavior and avoid WA bans.</p>
-        </div>
-        <div class="feature-card">
-          <span class="feature-num">09</span>
-          <div class="feature-icon">📢</div>
-          <h3 class="feature-title">Broadcast</h3>
-          <p class="feature-desc">Send one message to hundreds of numbers in a single API call. Automatic delay between sends, per-number success/fail result returned.</p>
-        </div>
-        <div class="feature-card">
-          <span class="feature-num">10</span>
-          <div class="feature-icon">📝</div>
-          <h3 class="feature-title">Message Templates</h3>
-          <p class="feature-desc">Store reusable message templates in DB. Retrieve via API or select from the dashboard. Supports create, update, delete.</p>
-        </div>
-        <div class="feature-card">
-          <span class="feature-num">11</span>
-          <div class="feature-icon">💾</div>
-          <h3 class="feature-title">Session Persistence</h3>
-          <p class="feature-desc">LocalAuth saves sessions to disk. On server restart, all staff sessions reconnect automatically — no re-scan QR needed.</p>
-        </div>
-        <div class="feature-card">
-          <span class="feature-num">12</span>
-          <div class="feature-icon">❤️</div>
-          <h3 class="feature-title">Health Check</h3>
-          <p class="feature-desc">Public <code>/api/health</code> endpoint returns DB status, uptime, and active client count. Ready for uptime monitors and load balancers.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══ HOW IT WORKS ════════════════════════════════════════════════ -->
-  <section class="section" id="how-it-works">
-    <div class="how-header">
-      <div>
-        <div class="label">How It Works</div>
-        <h2 class="section-title">Two send modes —<br>immediate or queued.</h2>
-      </div>
-      <p class="section-sub">Choose the mode that fits your workflow. Both modes are accessible via a simple REST API.</p>
-    </div>
-
-    <div class="steps-grid">
-      <div class="step-card">
-        <div class="step-num-badge">01</div>
-        <h3 class="step-card-title">Immediate Send</h3>
-        <ul class="step-list">
-          <li><span class="idx">1</span><span>POST to <code>/api/send-text</code> with <code>staff_id</code> + phone + message</span></li>
-          <li><span class="idx">2</span><span>Server validates number is registered on WhatsApp</span></li>
-          <li><span class="idx">3</span><span>Message sent instantly, DB updated, <code>messageId</code> returned</span></li>
-          <li><span class="idx">4</span><span>ACK events update status to delivered → read automatically</span></li>
-        </ul>
-        <p style="font-size:0.75rem;color:var(--muted);margin-top:1.25rem;">⚠ Requires WA client to be connected</p>
-      </div>
-
-      <div class="step-card">
-        <div class="step-num-badge outline">02</div>
-        <h3 class="step-card-title">Queue Mode</h3>
-        <ul class="step-list">
-          <li><span class="idx" style="background:#eaf3fb;color:#2a7ab8;">1</span><span>POST to <code>/api/queue-text</code> (or queue-pdf / queue-media)</span></li>
-          <li><span class="idx" style="background:#eaf3fb;color:#2a7ab8;">2</span><span>Row inserted to <code>wa_outgoing</code> with <code>status=pending</code></span></li>
-          <li><span class="idx" style="background:#eaf3fb;color:#2a7ab8;">3</span><span>Cron calls <code>/api/run-cron?token=SECRET</code> every N minutes</span></li>
-          <li><span class="idx" style="background:#eaf3fb;color:#2a7ab8;">4</span><span>Processor sends pending messages, updates status, retries on failure</span></li>
-        </ul>
-        <p style="font-size:0.75rem;color:var(--muted);margin-top:1.25rem;">✓ Works even if client connects after queueing</p>
+      <div
+        class="w-64 h-80 bg-gray-900 rounded-[2rem] shadow-2xl rotate-6 transform translate-y-8 border-8 border-white flex items-center justify-center p-8">
+        <p class="font-mono text-green-400 text-sm leading-relaxed">
+          POST /api/send<br><br>
+          {<br>
+          &nbsp;&nbsp;"phone": "628...",<br>
+          &nbsp;&nbsp;"msg": "Hello"<br>
+          }
+        </p>
       </div>
     </div>
 
-    <!-- Architecture -->
-    <h3 style="font-family:var(--font-head);font-size:0.8rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);text-align:center;margin-top:3.5rem;margin-bottom:0.5rem;">Architecture</h3>
-    <div class="arch-box">
-      <div class="arch-node">
-        <p>Your App</p>
-        <p>REST / Cron</p>
-      </div>
-      <div class="arch-arrow">→</div>
-      <div class="arch-node highlight">
-        <p>This Server</p>
-        <p>Express + Socket.IO</p>
-      </div>
-      <div class="arch-arrow">⇄</div>
-      <div class="arch-node">
-        <p>Sessions</p>
-        <p>whatsapp-web.js</p>
-      </div>
-      <div class="arch-arrow">→</div>
-      <div class="arch-node">
-        <p>Delivery</p>
-        <p>WhatsApp Web</p>
-      </div>
-      <div class="arch-arrow" style="transform:rotate(90deg);display:block;text-align:center;width:100%;">↓</div>
-      <div class="arch-node" style="margin-top:-0.5rem">
-        <p>Persistence</p>
-        <p>MySQL</p>
-      </div>
-      <div class="arch-node" style="margin-top:-0.5rem">
-        <p>Real-time</p>
-        <p>Socket.IO → Browser</p>
-      </div>
-      <div class="arch-node" style="margin-top:-0.5rem">
-        <p>Push</p>
-        <p>Webhook → Your URL</p>
-      </div>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-  <!-- ══ QUICK START ══════════════════════════════════════════════════ -->
-  <section class="section-full quickstart-bg" id="quickstart">
-    <div class="inner">
-      <div class="label">Quick Start</div>
-      <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:1rem;margin-bottom:0;">
-        <h2 class="section-title">Running in<br>4 steps.</h2>
-        <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank" class="btn btn-outline btn-lg">View on GitHub →</a>
+    <!-- Steps Layout -->
+    <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-16">
+      <div class="lg:col-span-5">
+        <p class="text-sm font-bold text-blue-500 uppercase tracking-widest mb-4">Step by Step</p>
+        <h2 class="text-5xl md:text-6xl font-bold tracking-tighter text-gray-900 leading-[1.05]">
+          Get WhatsApp API Running in Four Steps.
+        </h2>
       </div>
 
-      <div class="qs-steps">
-        <div class="qs-step">
-          <div class="qs-num">01</div>
-          <div>
-            <div class="qs-title">Clone & install</div>
-            <pre class="code-block"><code>git clone https://github.com/amad-IO/bot_whatsapp.git
-cd bot_whatsapp
-npm install</code></pre>
+      <div class="lg:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-16 relative">
+        <!-- Horizontal Line Connecting Steps (Desktop only) -->
+        <div class="hidden md:block absolute top-5 left-0 w-full h-[1px] bg-gray-200 -z-10"></div>
+
+        <!-- Step 1 -->
+        <div class="bg-white">
+          <div class="w-10 h-10 bg-black text-white rounded flex items-center justify-center text-sm font-bold mb-6">01
           </div>
+          <h3 class="text-2xl font-bold tracking-tight mb-3">Install Dependencies</h3>
+          <p class="text-gray-500 font-medium leading-relaxed">We start by setting up the Node.js environment. Clone the
+            repository and run <code>npm install</code> to get all required packages.</p>
         </div>
-
-        <div class="qs-step">
-          <div class="qs-num">02</div>
-          <div>
-            <div class="qs-title">Configure environment</div>
-            <pre class="code-block"><code>cp .env.example .env
-# Edit .env — set DB credentials and CRON_TOKEN</code></pre>
+        <!-- Step 2 -->
+        <div class="bg-white">
+          <div class="w-10 h-10 bg-black text-white rounded flex items-center justify-center text-sm font-bold mb-6">02
           </div>
+          <h3 class="text-2xl font-bold tracking-tight mb-3">Configure Environment</h3>
+          <p class="text-gray-500 font-medium leading-relaxed">Based on your evaluation, we will create a customized
+            <code>.env</code> file. We will provide a clear picture of database and port settings.
+          </p>
         </div>
-
-        <div class="qs-step">
-          <div class="qs-num">03</div>
-          <div>
-            <div class="qs-title">Create database</div>
-            <pre class="code-block"><code>mysql -u root -p -e "CREATE DATABASE simrs_wa CHARACTER SET utf8mb4"
-mysql -u root -p simrs_wa &lt; schema-update.sql</code></pre>
+        <!-- Step 3 -->
+        <div class="bg-white">
+          <div class="w-10 h-10 bg-black text-white rounded flex items-center justify-center text-sm font-bold mb-6">03
           </div>
+          <h3 class="text-2xl font-bold tracking-tight mb-3">Start the Server</h3>
+          <p class="text-gray-500 font-medium leading-relaxed">Once you approve the configuration, our system handles
+            the entire initialization process. You can watch the full progress via PM2 or Docker.</p>
+        </div>
+        <!-- Step 4 -->
+        <div class="bg-white">
+          <div class="w-10 h-10 bg-black text-white rounded flex items-center justify-center text-sm font-bold mb-6">04
+          </div>
+          <h3 class="text-2xl font-bold tracking-tight mb-3">Monitor & Send</h3>
+          <p class="text-gray-500 font-medium leading-relaxed">Generate seamless messages! We provide a real-time
+            dashboard so you can track performance from anywhere and anytime.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ BIG STATS SECTION ═══════════════════════════════════════════ -->
+  <section class="py-24 px-6">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-12">
+      <!-- Image group -->
+      <div class="flex-1 flex gap-4">
+        <div class="w-full h-80 rounded-[2rem] bg-gray-100 overflow-hidden relative">
+          <img src="hero.jpg" class="w-full h-full object-cover object-top opacity-50 mix-blend-multiply"
+            alt="Dashboard preview">
+        </div>
+      </div>
+
+      <!-- Stats text -->
+      <div class="flex-1 flex gap-12 md:pl-12">
+        <div>
+          <h3 class="text-6xl md:text-8xl font-bold tracking-tighter text-gray-900 mb-2">200+</h3>
+          <p class="text-lg text-gray-500 font-medium">Messages<br>Per Minute</p>
+        </div>
+        <div>
+          <h3 class="text-6xl md:text-8xl font-bold tracking-tighter text-gray-900 mb-2">100<span
+              class="text-5xl">%</span></h3>
+          <p class="text-lg text-gray-500 font-medium">Open Source<br>Free Forever</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ PROJECTS / FEATURES GRID ════════════════════════════════════ -->
+  <section id="features" class="py-24 px-6 bg-[#f8f9fb]">
+    <div class="max-w-7xl mx-auto">
+      <div class="flex justify-between items-end mb-12">
+        <div>
+          <p class="text-sm font-bold text-blue-500 uppercase tracking-widest mb-4">Features</p>
+          <h2 class="text-4xl md:text-5xl font-bold tracking-tighter text-gray-900 leading-[1.1] max-w-xl">
+            Gateway Capabilities Across the Platform
+          </h2>
+        </div>
+        <a href="https://github.com/amad-IO/bot_whatsapp"
+          class="text-sm font-bold border-b-2 border-black pb-1 hover:text-gray-500 transition-colors hidden md:block">List
+          of Features</a>
+      </div>
+
+      <!-- Feature grid squares -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        
+        <div class="bg-white rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col group hover:-translate-y-2 transition-transform">
+          <div class="w-14 h-14 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mb-6">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-6 h-6"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          </div>
+          <h4 class="font-bold text-gray-900 text-xl mb-3">Multi Staff</h4>
+          <p class="text-gray-500 font-medium leading-relaxed">Connect multiple devices and manage your entire team's conversations in one unified inbox.</p>
         </div>
 
-        <div class="qs-step">
-          <div class="qs-num">04</div>
-          <div>
-            <div class="qs-title">Start server & connect</div>
-            <pre class="code-block"><code>node server-new.js
+        <div class="bg-white rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col group hover:-translate-y-2 transition-transform">
+          <div class="w-14 h-14 rounded-full bg-green-50 text-green-600 flex items-center justify-center mb-6">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-6 h-6"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          </div>
+          <h4 class="font-bold text-gray-900 text-xl mb-3">Realtime Sockets</h4>
+          <p class="text-gray-500 font-medium leading-relaxed">Watch incoming and outgoing messages sync instantly across all dashboard sessions.</p>
+        </div>
 
-# Open in browser:
-# http://localhost:3030/main-dashboard.html  — Dashboard
-# http://localhost:3030/qr-scanner.html      — Connect WhatsApp</code></pre>
+        <div class="bg-white rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col group hover:-translate-y-2 transition-transform">
+          <div class="w-14 h-14 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mb-6">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-6 h-6"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          </div>
+          <h4 class="font-bold text-gray-900 text-xl mb-3">Cron Queue</h4>
+          <p class="text-gray-500 font-medium leading-relaxed">Schedule messages for later and automatically process background queues efficiently.</p>
+        </div>
+
+        <div class="bg-white rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col group hover:-translate-y-2 transition-transform">
+          <div class="w-14 h-14 rounded-full bg-yellow-50 text-yellow-600 flex items-center justify-center mb-6">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-6 h-6"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          </div>
+          <h4 class="font-bold text-gray-900 text-xl mb-3">Webhook Ready</h4>
+          <p class="text-gray-500 font-medium leading-relaxed">Easily forward incoming messages and events to your own external backend servers securely.</p>
+        </div>
+
+        <div class="bg-gray-900 rounded-[2rem] p-8 shadow-2xl flex flex-col justify-between group hover:-translate-y-2 transition-transform md:col-span-2 relative overflow-hidden border border-gray-800">
+          <div class="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full blur-[80px]"></div>
+          
+          <div class="relative z-10">
+            <div class="flex items-center gap-2 mb-6">
+              <div class="w-3 h-3 rounded-full bg-red-500"></div>
+              <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+              <div class="w-3 h-3 rounded-full bg-green-500"></div>
+            </div>
+            <div class="font-mono text-sm md:text-base text-gray-300 leading-loose">
+              <span class="text-green-400 font-bold">POST</span> <span class="text-white">/api/send</span><br>
+              <span class="text-blue-400">{</span><br>
+              &nbsp;&nbsp;<span class="text-gray-400">"phone":</span> <span class="text-yellow-300">"628123456"</span>,<br>
+              &nbsp;&nbsp;<span class="text-gray-400">"message":</span> <span class="text-yellow-300">"Hello World"</span><br>
+              <span class="text-blue-400">}</span>
+            </div>
+          </div>
+
+          <div class="relative z-10 mt-12">
+            <h4 class="font-bold text-3xl mb-1 text-white">REST API</h4>
+            <p class="text-sm text-gray-400 font-medium">Swagger Documentation Included</p>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ══ API OVERVIEW ════════════════════════════════════════════════ -->
-  <section class="section" id="api">
-    <div class="label">API Reference</div>
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:1rem;">
-      <h2 class="section-title">Simple REST API.</h2>
-      <a href="api-docs.html" class="btn btn-outline btn-lg">Full API Docs →</a>
-    </div>
+  <!-- ══ FOOTER ══════════════════════════════════════════════════════ -->
+  <footer class="py-24 px-6 text-center">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-5xl md:text-7xl font-bold tracking-tighter text-gray-900 mb-8">Ready to automate?</h2>
 
-    <div class="api-grid">
-      <div class="api-card">
-        <div class="api-card-title" style="color:var(--accent-text);">Immediate Send</div>
-        <div class="api-list">
-          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/send-text</span></div>
-          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/send-media</span></div>
-          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/broadcast-text</span></div>
-        </div>
-      </div>
-
-      <div class="api-card">
-        <div class="api-card-title" style="color:#2a7ab8;">Queue</div>
-        <div class="api-list">
-          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/queue-text</span></div>
-          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/queue-pdf</span></div>
-          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/queue-media</span></div>
-          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/run-cron?token=</span></div>
-        </div>
-      </div>
-
-      <div class="api-card">
-        <div class="api-card-title" style="color:#b87a2a;">Messages & Status</div>
-        <div class="api-list">
-          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/outgoing?page=&amp;limit=</span></div>
-          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/incoming?page=&amp;limit=</span></div>
-          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/queue/stats</span></div>
-          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/queue/reset-failed</span></div>
-        </div>
-      </div>
-
-      <div class="api-card">
-        <div class="api-card-title" style="color:var(--muted);">Utility</div>
-        <div class="api-list">
-          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/health <span style="color:#ccc;font-size:0.7rem;">(no auth)</span></span></div>
-          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/clients</span></div>
-          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/logout</span></div>
-          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/templates</span></div>
-        </div>
+      <div class="mt-32 pt-8 border-t border-gray-200 flex flex-col md:flex-row items-center justify-center text-sm font-medium text-gray-500">
+        <p>&copy; 2026 WA Gateway. Open Source.</p>
       </div>
     </div>
-
-    <!-- Code example -->
-    <div style="margin-top:2rem;">
-      <div style="font-family:var(--font-head);font-size:0.8125rem;font-weight:600;color:var(--muted);margin-bottom:0.75rem;">Example: Queue a message</div>
-      <pre class="code-block"><code>curl -X POST http://localhost:3030/api/queue-text \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-api-key" \
-  -d '{
-    "staff_id": "staff1",
-    "wa_number": "628123456789",
-    "message": "Hello from WA Gateway!",
-    "scheduled_at": "2025-12-31 08:00:00"
-  }'
-
-# Response:
-# { "success": true, "id": 42 }</code></pre>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-  <!-- ══ TECH STACK ═══════════════════════════════════════════════════ -->
-  <section class="section" style="text-align:center;">
-    <div class="label" style="text-align:center;">Built With</div>
-    <h2 class="section-title" style="text-align:center;">Solid tech stack.</h2>
-    <div class="stack-pills">
-      <span class="stack-pill">Node.js 18+</span>
-      <span class="stack-pill">Express 5</span>
-      <span class="stack-pill">whatsapp-web.js</span>
-      <span class="stack-pill">Puppeteer</span>
-      <span class="stack-pill">Socket.IO 4</span>
-      <span class="stack-pill">MySQL 2</span>
-      <span class="stack-pill">dotenv</span>
-      <span class="stack-pill">express-rate-limit</span>
-    </div>
-  </section>
-
-  <!-- ══ FOOTER CTA ═══════════════════════════════════════════════════ -->
-  <footer class="footer-dark">
-    <div class="footer-top">
-      <div>
-        <h2 class="footer-cta-text">Ready to deploy your own WhatsApp Gateway?</h2>
-        <p class="footer-cta-sub">Self-hosted, open source, free forever. Your data stays on your server.</p>
-      </div>
-      <div class="footer-cta-btns">
-        <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank" class="btn-white">
-          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-          View on GitHub
-        </a>
-        <a href="#quickstart" class="btn-ghost-white">Quick Start →</a>
-      </div>
-    </div>
-
-    <div class="footer-brand">©WA Gateway</div>
-
-    <div class="footer-bottom">
-      <div class="footer-logo">
-        <span>📱</span>
-        WA Multi-Staff Gateway · MIT License
-      </div>
-      <div class="footer-links">
-        <a href="main-dashboard.html">Dashboard</a>
-        <a href="api-docs.html">API Docs</a>
-        <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank">GitHub</a>
-        <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank">amad-IO</a>
-      </div>
-    </div>
-    <p class="footer-copy">© 2024 amad-IO · bot_whatsapp · github.com/amad-IO/bot_whatsapp</p>
   </footer>
 
 </body>
+
 </html>
