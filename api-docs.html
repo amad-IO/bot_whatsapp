@@ -2,16 +2,111 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>WA Gateway — API Docs</title>
+  <title>WA Gateway — API Documentation</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
   <style>
-    body { margin: 0; }
-    .topbar { display: none; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --fg: #0f0f0f;
+      --muted: #6b6b6b;
+      --border: #e8e8e8;
+      --accent: #25d366;
+      --font-head: 'Syne', sans-serif;
+      --font-body: 'Inter', sans-serif;
+    }
+    body { font-family: var(--font-body); background: #fff; -webkit-font-smoothing: antialiased; }
+
+    /* Navbar */
+    nav {
+      position: sticky;
+      top: 1rem;
+      z-index: 200;
+      display: flex;
+      justify-content: center;
+      padding: 0 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .nav-inner {
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      padding: 0.6rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 2.5rem;
+      max-width: 900px;
+      width: 100%;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-head); font-weight: 700; font-size: 1rem;
+      color: var(--fg); text-decoration: none; flex-shrink: 0;
+    }
+    .nav-logo .logo-icon {
+      width: 30px; height: 30px; background: var(--accent);
+      border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; font-size: 14px;
+    }
+    .nav-links { display: flex; align-items: center; gap: 2rem; flex: 1; justify-content: center; }
+    .nav-links a { font-size: 0.875rem; color: var(--muted); text-decoration: none; font-weight: 500; transition: color 0.2s; }
+    .nav-links a:hover { color: var(--fg); }
+    .nav-actions { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.5rem 1.1rem; border-radius: 9999px;
+      font-size: 0.8125rem; font-weight: 600;
+      text-decoration: none; transition: all 0.2s ease;
+      cursor: pointer; border: none; font-family: var(--font-body);
+    }
+    .btn-dark { background: #0f0f0f; color: #fff; }
+    .btn-dark:hover { background: #1a1a1a; }
+    .btn-outline { background: transparent; color: var(--fg); border: 1.5px solid var(--border); }
+    .btn-outline:hover { border-color: #999; background: #f5f5f5; }
+
+    /* Swagger overrides */
+    .topbar { display: none !important; }
+    .swagger-ui .info { margin: 2rem 0 1.5rem; }
+    .swagger-ui .info .title { font-family: var(--font-head) !important; font-weight: 800 !important; font-size: 2rem !important; color: var(--fg) !important; }
+    .swagger-ui .scheme-container { background: #f7f7f7; border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem 1.5rem; }
+    .swagger-ui select { border-radius: 9999px !important; border: 1.5px solid var(--border) !important; }
+    .swagger-ui .btn { border-radius: 9999px !important; }
+    .swagger-ui .opblock-tag { font-family: var(--font-head) !important; font-weight: 700 !important; }
+
+    #swagger-ui { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem 4rem; }
   </style>
 </head>
 <body>
+
+  <nav>
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <div class="logo-icon">📱</div>
+        WA Gateway
+      </a>
+      <div class="nav-links">
+        <a href="/#features">Features</a>
+        <a href="/#how-it-works">How it works</a>
+        <a href="/#quickstart">Quick Start</a>
+        <a href="api-docs.html" style="color:#0f0f0f;font-weight:600;">API Docs</a>
+      </div>
+      <div class="nav-actions">
+        <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank" class="btn btn-outline">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+          GitHub
+        </a>
+        <a href="main-dashboard.html" class="btn btn-dark">Dashboard →</a>
+      </div>
+    </div>
+  </nav>
+
   <div id="swagger-ui"></div>
+
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
     SwaggerUIBundle({
@@ -21,10 +116,6 @@
       presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
       layout: 'BaseLayout',
       tryItOutEnabled: true,
-      requestInterceptor: function(req) {
-        const key = document.querySelector('.auth-wrapper input[type="text"]');
-        return req;
-      }
     });
   </script>
 </body>

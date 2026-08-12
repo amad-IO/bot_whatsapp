@@ -2,455 +2,1143 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>WA Multi-Staff Gateway — Self-hosted WhatsApp Gateway</title>
+  <title>WA Gateway — Self-hosted WhatsApp Gateway for Multiple Staff</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Self-hosted WhatsApp gateway supporting multiple staff accounts with queue, scheduling, webhooks, and real-time dashboard. Built on whatsapp-web.js.">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="Self-hosted WhatsApp gateway supporting multiple staff accounts with queue, scheduling, webhooks, and real-time dashboard. Built on whatsapp-web.js. Open source, free forever.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #ffffff;
+      --fg: #0f0f0f;
+      --muted: #6b6b6b;
+      --border: #e8e8e8;
+      --accent: #25d366;
+      --accent-muted: #e8f9ef;
+      --accent-text: #1a9d4a;
+      --sky: #b8d4f0;
+      --sky-light: #eaf3fb;
+      --dark: #0f0f0f;
+      --dark-2: #1a1a1a;
+      --radius-pill: 9999px;
+      --radius-card: 1.5rem;
+      --radius-sm: 0.75rem;
+      --font-head: 'Syne', sans-serif;
+      --font-body: 'Inter', sans-serif;
+    }
+
     html { scroll-behavior: smooth; }
-    .gradient-text { background: linear-gradient(135deg, #22c55e, #16a34a, #4ade80); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .card-glow:hover { box-shadow: 0 0 0 1px rgba(34,197,94,0.3), 0 8px 32px rgba(34,197,94,0.08); }
-    .code-block { background: #0d1117; border: 1px solid #30363d; }
-    .hero-glow { background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(34,197,94,0.12) 0%, transparent 70%); }
-    @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
-    .fade-up { animation: fadeUp 0.6s ease forwards; }
-    .step-line::after { content:''; position:absolute; top:50%; left:100%; width:100%; height:1px; background:linear-gradient(90deg,#22c55e,transparent); transform:translateY(-50%); }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── NAVBAR ── */
+    nav {
+      position: sticky;
+      top: 1.25rem;
+      z-index: 100;
+      display: flex;
+      justify-content: center;
+      padding: 0 1.5rem;
+    }
+
+    .nav-inner {
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-pill);
+      padding: 0.6rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 2.5rem;
+      max-width: 900px;
+      width: 100%;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--fg);
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+
+    .nav-logo .logo-icon {
+      width: 30px;
+      height: 30px;
+      background: var(--accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      flex: 1;
+      justify-content: center;
+    }
+
+    .nav-links a {
+      font-size: 0.875rem;
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--fg); }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 1.1rem;
+      border-radius: var(--radius-pill);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      border: none;
+      font-family: var(--font-body);
+    }
+
+    .btn-dark {
+      background: var(--dark);
+      color: #fff;
+    }
+    .btn-dark:hover { background: var(--dark-2); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--fg);
+      border: 1.5px solid var(--border);
+    }
+    .btn-outline:hover { border-color: #999; background: #f5f5f5; }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      padding: 0.5rem 0.875rem;
+    }
+    .btn-ghost:hover { color: var(--fg); }
+
+    .btn-lg {
+      padding: 0.875rem 1.75rem;
+      font-size: 0.9375rem;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      margin: 1.5rem 1.5rem 0;
+      border-radius: 2rem;
+      overflow: hidden;
+      position: relative;
+      min-height: 580px;
+      display: flex;
+      align-items: flex-end;
+    }
+
+    .hero-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+    }
+
+    .hero-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        135deg,
+        rgba(15,15,15,0.75) 0%,
+        rgba(15,15,15,0.3) 50%,
+        rgba(15,15,15,0.5) 100%
+      );
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      padding: 3.5rem;
+      width: 100%;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 2rem;
+    }
+
+    .hero-title {
+      font-family: var(--font-head);
+      font-size: clamp(3.5rem, 9vw, 7.5rem);
+      font-weight: 800;
+      color: #ffffff;
+      line-height: 0.95;
+      letter-spacing: -0.02em;
+    }
+
+    .hero-right {
+      max-width: 360px;
+      flex-shrink: 0;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.35rem 0.85rem;
+      border-radius: var(--radius-pill);
+      margin-bottom: 1rem;
+      backdrop-filter: blur(8px);
+    }
+
+    .hero-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .hero-desc {
+      font-size: 0.9375rem;
+      color: rgba(255,255,255,0.75);
+      line-height: 1.65;
+      margin-bottom: 1.75rem;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    /* ── SECTION UTILS ── */
+    .section {
+      padding: 6rem 1.5rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .section-full {
+      padding: 6rem 1.5rem;
+    }
+
+    .section-full .inner {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent-text);
+      margin-bottom: 1rem;
+    }
+
+    .section-title {
+      font-family: var(--font-head);
+      font-size: clamp(2rem, 4vw, 3.25rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: var(--fg);
+    }
+
+    .section-sub {
+      font-size: 1rem;
+      color: var(--muted);
+      max-width: 520px;
+      line-height: 1.65;
+      margin-top: 0.75rem;
+    }
+
+    hr.divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0 1.5rem;
+    }
+
+    /* ── ABOUT SECTION ── */
+    .about-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+      margin-top: 4rem;
+    }
+
+    .about-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .stat-card {
+      background: var(--sky-light);
+      border-radius: var(--radius-card);
+      padding: 1.75rem 1.5rem;
+    }
+
+    .stat-number {
+      font-family: var(--font-head);
+      font-size: 3rem;
+      font-weight: 800;
+      color: var(--fg);
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 0.8125rem;
+      color: var(--muted);
+      margin-top: 0.35rem;
+    }
+
+    /* ── FEATURES ── */
+    .features-bg {
+      background: #f7f7f7;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border-radius: var(--radius-card);
+      overflow: hidden;
+      margin-top: 3.5rem;
+    }
+
+    .feature-card {
+      background: #fff;
+      padding: 2rem;
+      transition: background 0.2s;
+    }
+
+    .feature-card:hover { background: var(--sky-light); }
+
+    .feature-num {
+      font-family: var(--font-head);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      margin-bottom: 1.25rem;
+      display: block;
+    }
+
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      margin-bottom: 1rem;
+    }
+
+    .feature-title {
+      font-family: var(--font-head);
+      font-size: 1.0625rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: var(--fg);
+    }
+
+    .feature-desc {
+      font-size: 0.8375rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .feature-desc code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.75rem;
+      background: #efefef;
+      padding: 0.1em 0.4em;
+      border-radius: 4px;
+      color: var(--accent-text);
+    }
+
+    /* ── HOW IT WORKS ── */
+    .how-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 2rem;
+      margin-bottom: 4rem;
+    }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 2rem;
+    }
+
+    .step-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 2rem;
+      position: relative;
+    }
+
+    .step-num-badge {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--dark);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-head);
+      font-size: 0.8125rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      flex-shrink: 0;
+    }
+
+    .step-num-badge.outline {
+      background: transparent;
+      border: 1.5px solid var(--border);
+      color: var(--muted);
+    }
+
+    .step-card-title {
+      font-family: var(--font-head);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--fg);
+      margin-bottom: 0.75rem;
+    }
+
+    .step-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .step-list li {
+      display: flex;
+      gap: 0.75rem;
+      font-size: 0.875rem;
+      color: #444;
+      align-items: flex-start;
+    }
+
+    .step-list li .idx {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--sky-light);
+      color: var(--accent-text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .step-list code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.75rem;
+      background: #f0f0f0;
+      padding: 0.1em 0.4em;
+      border-radius: 4px;
+      color: var(--accent-text);
+    }
+
+    /* ── QUICK START ── */
+    .quickstart-bg { background: #f7f7f7; }
+
+    .qs-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      margin-top: 3rem;
+    }
+
+    .qs-step {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 1.75rem 2rem;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    .qs-num {
+      font-family: var(--font-head);
+      font-size: 2rem;
+      font-weight: 800;
+      color: #e0e0e0;
+      line-height: 1;
+      min-width: 48px;
+    }
+
+    .qs-title {
+      font-family: var(--font-head);
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--fg);
+      margin-bottom: 0.75rem;
+    }
+
+    .code-block {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 0.75rem;
+      padding: 1.25rem 1.5rem;
+      font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+      font-size: 0.8125rem;
+      color: #c9d1d9;
+      overflow-x: auto;
+      line-height: 1.7;
+    }
+
+    /* ── API OVERVIEW ── */
+    .api-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+      margin-top: 3rem;
+    }
+
+    .api-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 1.75rem;
+    }
+
+    .api-card-title {
+      font-family: var(--font-head);
+      font-size: 0.8125rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 1.25rem;
+    }
+
+    .api-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .api-item {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.8125rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    .method {
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      font-family: var(--font-body);
+      flex-shrink: 0;
+    }
+
+    .method-post { background: #e8f9ef; color: #1a9d4a; }
+    .method-get  { background: #eaf3fb; color: #2a7ab8; }
+
+    .api-path { color: #444; }
+
+    /* ── ARCH SECTION ── */
+    .arch-box {
+      background: #f7f7f7;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 2.5rem;
+      margin-top: 2rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+    }
+
+    .arch-node {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1rem 1.5rem;
+      text-align: center;
+    }
+
+    .arch-node.highlight {
+      background: var(--accent-muted);
+      border-color: #9de8b8;
+    }
+
+    .arch-node p:first-child { font-size: 0.7rem; color: var(--muted); margin-bottom: 0.25rem; }
+    .arch-node p:last-child { font-family: var(--font-head); font-size: 0.9rem; font-weight: 700; }
+
+    .arch-arrow { font-size: 1.25rem; color: var(--accent-text); }
+
+    /* ── TECH STACK ── */
+    .stack-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 2rem;
+      justify-content: center;
+    }
+
+    .stack-pill {
+      background: #f0f0f0;
+      color: var(--fg);
+      border-radius: var(--radius-pill);
+      padding: 0.55rem 1.25rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+
+    .stack-pill:hover { background: var(--dark); color: #fff; border-color: var(--dark); }
+
+    /* ── CTA / FOOTER ── */
+    .footer-dark {
+      background: var(--dark);
+      color: #fff;
+      margin: 1.5rem 1.5rem 1.5rem;
+      border-radius: 2rem;
+      padding: 4rem 3.5rem 3rem;
+    }
+
+    .footer-top {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 3rem;
+      align-items: start;
+      margin-bottom: 3rem;
+      padding-bottom: 3rem;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .footer-cta-text {
+      font-family: var(--font-head);
+      font-size: clamp(1.5rem, 3vw, 2.25rem);
+      font-weight: 800;
+      line-height: 1.2;
+      max-width: 500px;
+    }
+
+    .footer-cta-sub {
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.5);
+      margin-top: 0.75rem;
+    }
+
+    .footer-cta-btns {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      align-items: flex-end;
+    }
+
+    .btn-white {
+      background: #fff;
+      color: var(--dark);
+      border-radius: var(--radius-pill);
+      padding: 0.75rem 1.5rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s;
+    }
+    .btn-white:hover { background: #f0f0f0; transform: translateY(-1px); }
+
+    .btn-ghost-white {
+      color: rgba(255,255,255,0.6);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: var(--radius-pill);
+      padding: 0.75rem 1.5rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s;
+    }
+    .btn-ghost-white:hover { color: #fff; border-color: rgba(255,255,255,0.4); }
+
+    .footer-brand {
+      font-family: var(--font-head);
+      font-size: clamp(3rem, 10vw, 7rem);
+      font-weight: 800;
+      color: rgba(255,255,255,0.08);
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin-bottom: 2.5rem;
+      user-select: none;
+    }
+
+    .footer-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+    }
+
+    .footer-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: #fff;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 1.75rem;
+    }
+
+    .footer-links a {
+      font-size: 0.8125rem;
+      color: rgba(255,255,255,0.45);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: rgba(255,255,255,0.9); }
+
+    .footer-copy {
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.25);
+      margin-top: 1.5rem;
+      text-align: right;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .hero { min-height: 480px; }
+      .hero-content { flex-direction: column; align-items: flex-start; padding: 2rem; }
+      .hero-right { max-width: 100%; }
+      .about-grid { grid-template-columns: 1fr; gap: 2.5rem; }
+      .features-grid { grid-template-columns: 1fr; }
+      .steps-grid { grid-template-columns: 1fr; }
+      .api-grid { grid-template-columns: 1fr; }
+      .footer-dark { margin: 1rem; padding: 2.5rem 1.75rem 2rem; border-radius: 1.5rem; }
+      .footer-top { grid-template-columns: 1fr; }
+      .footer-cta-btns { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
+      .footer-brand { font-size: 3rem; }
+      .footer-bottom { flex-direction: column; align-items: flex-start; }
+      .how-header { flex-direction: column; }
+    }
+
+    /* Scroll animations */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up { animation: fadeUp 0.65s ease forwards; }
+    .delay-1 { animation-delay: 0.1s; opacity: 0; }
+    .delay-2 { animation-delay: 0.2s; opacity: 0; }
+    .delay-3 { animation-delay: 0.3s; opacity: 0; }
   </style>
 </head>
-<body class="bg-gray-950 text-white antialiased">
+<body>
 
-  <!-- ══ NAVBAR ════════════════════════════════════════════════ -->
-  <nav class="sticky top-0 z-50 bg-gray-950/90 backdrop-blur border-b border-gray-800">
-    <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="text-xl">📱</span>
-        <span class="font-bold text-white">WA Gateway</span>
-        <span class="text-xs bg-green-900/50 text-green-400 border border-green-800 px-2 py-0.5 rounded-full ml-1">v1.0</span>
+  <!-- ══ NAVBAR ══════════════════════════════════════════════════════ -->
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <div class="logo-icon">📱</div>
+        WA Gateway
+      </a>
+      <div class="nav-links">
+        <a href="#about">About</a>
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#quickstart">Quick Start</a>
+        <a href="#api">API</a>
       </div>
-      <div class="hidden md:flex items-center gap-6 text-sm text-gray-400">
-        <a href="#features" class="hover:text-white transition-colors">Features</a>
-        <a href="#how-it-works" class="hover:text-white transition-colors">How it works</a>
-        <a href="#quickstart" class="hover:text-white transition-colors">Quick start</a>
-        <a href="#api" class="hover:text-white transition-colors">API</a>
-      </div>
-      <div class="flex items-center gap-2">
-        <a href="https://github.com/ahmadfauzirahman99/wa-multi-staff-gateway" target="_blank"
-           class="flex items-center gap-1.5 text-sm text-gray-300 hover:text-white border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded-lg transition-all">
-          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+      <div class="nav-actions">
+        <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank" class="btn btn-outline">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
           GitHub
         </a>
-        <a href="main-dashboard.html" class="text-sm bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg transition-colors font-medium">Dashboard →</a>
+        <a href="main-dashboard.html" class="btn btn-dark">Dashboard →</a>
       </div>
     </div>
   </nav>
 
-  <!-- ══ HERO ══════════════════════════════════════════════════ -->
-  <section class="hero-glow pt-20 pb-16 px-6">
-    <div class="max-w-4xl mx-auto text-center">
-      <div class="inline-flex items-center gap-2 text-xs bg-green-950 border border-green-800 text-green-400 px-3 py-1.5 rounded-full mb-6">
-        <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
-        Self-hosted · No monthly fees · Open source
-      </div>
-      <h1 class="text-5xl md:text-6xl font-bold mb-6 leading-tight">
-        WhatsApp Gateway<br>
-        <span class="gradient-text">for Multiple Staff</span>
-      </h1>
-      <p class="text-xl text-gray-400 mb-8 max-w-2xl mx-auto leading-relaxed">
-        Connect unlimited WhatsApp accounts, queue messages, schedule delivery, receive webhooks — all from a single Node.js server you control.
-      </p>
-      <div class="flex flex-wrap items-center justify-center gap-3">
-        <a href="#quickstart" class="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-xl font-semibold text-sm transition-all hover:shadow-lg hover:shadow-green-900/50">Get Started →</a>
-        <a href="main-dashboard.html" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-6 py-3 rounded-xl font-semibold text-sm transition-colors">Live Dashboard</a>
-        <a href="api-docs.html" class="text-gray-400 hover:text-white px-6 py-3 text-sm transition-colors">API Docs →</a>
-      </div>
-
-      <!-- Stats row -->
-      <div class="flex flex-wrap justify-center gap-8 mt-14 text-sm">
-        <div class="text-center">
-          <p class="text-2xl font-bold text-white">∞</p>
-          <p class="text-gray-500">Staff accounts</p>
+  <!-- ══ HERO ═══════════════════════════════════════════════════════ -->
+  <section class="hero fade-up">
+    <img src="hero.jpg" alt="WA Gateway — WhatsApp messaging infrastructure" class="hero-img">
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <h1 class="hero-title">WA<br>Gateway</h1>
+      <div class="hero-right">
+        <div class="hero-badge">
+          <span class="dot"></span>
+          Self-hosted · Open source · Free forever
         </div>
-        <div class="w-px bg-gray-800 hidden md:block"></div>
-        <div class="text-center">
-          <p class="text-2xl font-bold text-white">3</p>
-          <p class="text-gray-500">Message types</p>
-        </div>
-        <div class="w-px bg-gray-800 hidden md:block"></div>
-        <div class="text-center">
-          <p class="text-2xl font-bold text-white">16+</p>
-          <p class="text-gray-500">REST endpoints</p>
-        </div>
-        <div class="w-px bg-gray-800 hidden md:block"></div>
-        <div class="text-center">
-          <p class="text-2xl font-bold text-white">0</p>
-          <p class="text-gray-500">Monthly cost</p>
+        <p class="hero-desc">
+          Connect unlimited WhatsApp accounts, queue messages, schedule delivery, and receive webhooks — all from a single Node.js server you control.
+        </p>
+        <div class="hero-cta">
+          <a href="#quickstart" class="btn btn-dark btn-lg">Get Started →</a>
+          <a href="main-dashboard.html" style="background:rgba(255,255,255,0.15);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2);color:#fff;" class="btn btn-lg">Live Dashboard</a>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ══ FEATURES ══════════════════════════════════════════════ -->
-  <section id="features" class="py-16 px-6 bg-gray-900/40">
-    <div class="max-w-6xl mx-auto">
-      <div class="text-center mb-12">
-        <h2 class="text-3xl font-bold mb-3">Everything you need</h2>
-        <p class="text-gray-400">A complete WhatsApp messaging infrastructure in one server.</p>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-
-        <!-- Feature: Multi-staff -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-green-900/50 rounded-xl flex items-center justify-center text-xl mb-4">👥</div>
-          <h3 class="font-semibold mb-2">Multi-Staff Support</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Each staff member gets an isolated WhatsApp session identified by a free-form <code class="text-green-400 text-xs bg-gray-800 px-1 rounded">staff_id</code>. No limit on number of accounts.</p>
-        </div>
-
-        <!-- Feature: Queue -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-blue-900/50 rounded-xl flex items-center justify-center text-xl mb-4">📋</div>
-          <h3 class="font-semibold mb-2">Message Queue</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Insert messages into MySQL and deliver via cron trigger. Supports text, PDF, and media files. Auto-retry up to configurable max attempts.</p>
-        </div>
-
-        <!-- Feature: Scheduled -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-purple-900/50 rounded-xl flex items-center justify-center text-xl mb-4">🗓️</div>
-          <h3 class="font-semibold mb-2">Scheduled Messages</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Set <code class="text-green-400 text-xs bg-gray-800 px-1 rounded">scheduled_at</code> on any queued message. The cron processor delivers only when the time arrives.</p>
-        </div>
-
-        <!-- Feature: Webhook -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-yellow-900/50 rounded-xl flex items-center justify-center text-xl mb-4">🔗</div>
-          <h3 class="font-semibold mb-2">Outgoing Webhooks</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Set <code class="text-green-400 text-xs bg-gray-800 px-1 rounded">WEBHOOK_URL</code> to receive incoming messages and delivery ACKs (sent / delivered / read) pushed to your system instantly.</p>
-        </div>
-
-        <!-- Feature: Delivery tracking -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-cyan-900/50 rounded-xl flex items-center justify-center text-xl mb-4">✅</div>
-          <h3 class="font-semibold mb-2">Delivery Tracking</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Real-time ACK events update each message status in DB: <span class="text-green-400 text-xs">sent → delivered → read</span>. Queryable via API or visible in dashboard.</p>
-        </div>
-
-        <!-- Feature: Real-time dashboard -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-orange-900/50 rounded-xl flex items-center justify-center text-xl mb-4">📊</div>
-          <h3 class="font-semibold mb-2">Real-time Dashboard</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Socket.IO-powered unified dashboard: stats, live feed, send messages, manage queue, view incoming, edit templates — all in one page.</p>
-        </div>
-
-        <!-- Feature: API auth -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-red-900/50 rounded-xl flex items-center justify-center text-xl mb-4">🔐</div>
-          <h3 class="font-semibold mb-2">API Key Auth</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Optional API key protection on all <code class="text-green-400 text-xs bg-gray-800 px-1 rounded">/api/*</code> endpoints via <code class="text-xs bg-gray-800 px-1 rounded text-gray-300">x-api-key</code> header, Bearer token, or query param.</p>
-        </div>
-
-        <!-- Feature: Rate limiting -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-pink-900/50 rounded-xl flex items-center justify-center text-xl mb-4">🛡️</div>
-          <h3 class="font-semibold mb-2">Rate Limiting</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">30 req/min limit on direct-send endpoints. Configurable random delay between queue messages to mimic human behavior and avoid WA bans.</p>
-        </div>
-
-        <!-- Feature: Templates -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-teal-900/50 rounded-xl flex items-center justify-center text-xl mb-4">📝</div>
-          <h3 class="font-semibold mb-2">Message Templates</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Store reusable message templates in DB. Retrieve via API or select from the dashboard to fill forms instantly. Supports create, update, delete.</p>
-        </div>
-
-        <!-- Feature: Session persistence -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-indigo-900/50 rounded-xl flex items-center justify-center text-xl mb-4">💾</div>
-          <h3 class="font-semibold mb-2">Session Persistence</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">LocalAuth saves sessions to disk. On server restart, all staff sessions reconnect automatically — no re-scan QR needed.</p>
-        </div>
-
-        <!-- Feature: Broadcast -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-lime-900/50 rounded-xl flex items-center justify-center text-xl mb-4">📢</div>
-          <h3 class="font-semibold mb-2">Broadcast</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Send one message to hundreds of numbers in a single API call. Automatic delay between sends, per-number success/fail result returned.</p>
-        </div>
-
-        <!-- Feature: Health check -->
-        <div class="card-glow bg-gray-900 border border-gray-800 rounded-2xl p-6 transition-all">
-          <div class="w-10 h-10 bg-gray-700/80 rounded-xl flex items-center justify-center text-xl mb-4">❤️</div>
-          <h3 class="font-semibold mb-2">Health Check</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Public <code class="text-green-400 text-xs bg-gray-800 px-1 rounded">/api/health</code> endpoint returns DB status, uptime, and active client count. Ready for uptime monitors and load balancers.</p>
-        </div>
-
-      </div>
-    </div>
-  </section>
-
-  <!-- ══ HOW IT WORKS ══════════════════════════════════════════ -->
-  <section id="how-it-works" class="py-16 px-6">
-    <div class="max-w-5xl mx-auto">
-      <div class="text-center mb-12">
-        <h2 class="text-3xl font-bold mb-3">How it works</h2>
-        <p class="text-gray-400">Two send modes — immediate or queued</p>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-        <!-- Immediate mode -->
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <div class="flex items-center gap-2 mb-4">
-            <span class="w-2 h-2 rounded-full bg-green-400"></span>
-            <h3 class="font-semibold">Immediate Send</h3>
-          </div>
-          <div class="space-y-3 text-sm">
-            <div class="flex gap-3">
-              <span class="w-6 h-6 rounded-full bg-green-900 text-green-400 text-xs flex items-center justify-center flex-shrink-0 font-bold">1</span>
-              <p class="text-gray-300">POST to <code class="text-green-400">/api/send-text</code> with staff_id + phone + message</p>
-            </div>
-            <div class="flex gap-3">
-              <span class="w-6 h-6 rounded-full bg-green-900 text-green-400 text-xs flex items-center justify-center flex-shrink-0 font-bold">2</span>
-              <p class="text-gray-300">Server validates number is registered on WhatsApp</p>
-            </div>
-            <div class="flex gap-3">
-              <span class="w-6 h-6 rounded-full bg-green-900 text-green-400 text-xs flex items-center justify-center flex-shrink-0 font-bold">3</span>
-              <p class="text-gray-300">Message sent instantly, DB updated, <code class="text-green-400">messageId</code> returned</p>
-            </div>
-            <div class="flex gap-3">
-              <span class="w-6 h-6 rounded-full bg-green-900 text-green-400 text-xs flex items-center justify-center flex-shrink-0 font-bold">4</span>
-              <p class="text-gray-300">ACK events update status to delivered → read automatically</p>
-            </div>
-          </div>
-          <p class="text-xs text-gray-600 mt-4">⚠ Requires WA client to be connected</p>
-        </div>
-
-        <!-- Queue mode -->
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <div class="flex items-center gap-2 mb-4">
-            <span class="w-2 h-2 rounded-full bg-blue-400"></span>
-            <h3 class="font-semibold">Queue Mode</h3>
-          </div>
-          <div class="space-y-3 text-sm">
-            <div class="flex gap-3">
-              <span class="w-6 h-6 rounded-full bg-blue-900 text-blue-400 text-xs flex items-center justify-center flex-shrink-0 font-bold">1</span>
-              <p class="text-gray-300">POST to <code class="text-green-400">/api/queue-text</code> (or queue-pdf / queue-media)</p>
-            </div>
-            <div class="flex gap-3">
-              <span class="w-6 h-6 rounded-full bg-blue-900 text-blue-400 text-xs flex items-center justify-center flex-shrink-0 font-bold">2</span>
-              <p class="text-gray-300">Row inserted to <code class="text-green-400">wa_outgoing</code> with <code class="text-green-400">status=pending</code></p>
-            </div>
-            <div class="flex gap-3">
-              <span class="w-6 h-6 rounded-full bg-blue-900 text-blue-400 text-xs flex items-center justify-center flex-shrink-0 font-bold">3</span>
-              <p class="text-gray-300">Cron calls <code class="text-green-400">/api/run-cron?token=SECRET</code> every N minutes</p>
-            </div>
-            <div class="flex gap-3">
-              <span class="w-6 h-6 rounded-full bg-blue-900 text-blue-400 text-xs flex items-center justify-center flex-shrink-0 font-bold">4</span>
-              <p class="text-gray-300">Processor sends pending messages, updates status, retries on failure</p>
-            </div>
-          </div>
-          <p class="text-xs text-gray-600 mt-4">✓ Works even if client connects after queueing</p>
+  <!-- ══ ABOUT ═══════════════════════════════════════════════════════ -->
+  <section class="section" id="about">
+    <div class="label">About</div>
+    <div class="about-grid">
+      <div>
+        <h2 class="section-title">A complete WhatsApp messaging infrastructure — on your own server.</h2>
+        <p class="section-sub">WA Gateway is a self-hosted, open-source platform that gives your team full control over WhatsApp messaging. Built on <strong>whatsapp-web.js</strong> and <strong>Express + Socket.IO</strong>, it runs anywhere Node.js runs.</p>
+        <div style="margin-top:2rem;display:flex;gap:1rem;flex-wrap:wrap;">
+          <a href="#quickstart" class="btn btn-dark btn-lg">Deploy Now →</a>
+          <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank" class="btn btn-outline btn-lg">View Source</a>
         </div>
       </div>
-
-      <!-- Architecture diagram -->
-      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8">
-        <h3 class="text-sm font-semibold text-gray-400 mb-6 text-center uppercase tracking-wider">Architecture</h3>
-        <div class="flex flex-wrap justify-center items-center gap-2 text-sm font-mono">
-          <div class="bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-center">
-            <p class="text-xs text-gray-500 mb-1">Your App</p>
-            <p class="text-white font-semibold">REST / Cron</p>
-          </div>
-          <div class="text-green-500 text-lg">→</div>
-          <div class="bg-green-950 border border-green-800 rounded-xl px-4 py-3 text-center">
-            <p class="text-xs text-green-400 mb-1">This Server</p>
-            <p class="text-white font-semibold">Express + Socket.IO</p>
-          </div>
-          <div class="text-green-500 text-lg">⇄</div>
-          <div class="bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-center">
-            <p class="text-xs text-gray-500 mb-1">Sessions</p>
-            <p class="text-white font-semibold">whatsapp-web.js</p>
-          </div>
-          <div class="text-green-500 text-lg">→</div>
-          <div class="bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-center">
-            <p class="text-xs text-gray-500 mb-1">Delivery</p>
-            <p class="text-white font-semibold">WhatsApp Web</p>
-          </div>
+      <div class="about-stats">
+        <div class="stat-card">
+          <div class="stat-number">∞</div>
+          <div class="stat-label">Staff accounts</div>
         </div>
-        <div class="flex justify-center mt-4">
-          <div class="text-gray-500 text-2xl">↓</div>
+        <div class="stat-card">
+          <div class="stat-number">16+</div>
+          <div class="stat-label">REST endpoints</div>
         </div>
-        <div class="flex justify-center mt-2 gap-4">
-          <div class="bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-center">
-            <p class="text-xs text-gray-500 mb-1">Persistence</p>
-            <p class="text-white font-semibold">MySQL</p>
-          </div>
-          <div class="bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-center">
-            <p class="text-xs text-gray-500 mb-1">Real-time</p>
-            <p class="text-white font-semibold">Socket.IO → Browser</p>
-          </div>
-          <div class="bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-center">
-            <p class="text-xs text-gray-500 mb-1">Push</p>
-            <p class="text-white font-semibold">Webhook → Your URL</p>
-          </div>
+        <div class="stat-card">
+          <div class="stat-number">3</div>
+          <div class="stat-label">Message types</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">$0</div>
+          <div class="stat-label">Monthly cost</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ══ QUICK START ════════════════════════════════════════════ -->
-  <section id="quickstart" class="py-16 px-6 bg-gray-900/40">
-    <div class="max-w-3xl mx-auto">
-      <div class="text-center mb-12">
-        <h2 class="text-3xl font-bold mb-3">Quick Start</h2>
-        <p class="text-gray-400">Running in 4 steps</p>
+  <hr class="divider">
+
+  <!-- ══ FEATURES ════════════════════════════════════════════════════ -->
+  <section class="section-full features-bg" id="features">
+    <div class="inner">
+      <div class="label">Features</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:1rem;">
+        <h2 class="section-title">Everything you need<br>in one server.</h2>
+        <p style="font-size:0.9rem;color:var(--muted);max-width:300px;line-height:1.6;">A complete WhatsApp messaging infrastructure. Self-hosted, zero monthly fees.</p>
       </div>
 
-      <div class="space-y-4">
+      <div class="features-grid">
+        <div class="feature-card">
+          <span class="feature-num">01</span>
+          <div class="feature-icon">👥</div>
+          <h3 class="feature-title">Multi-Staff Support</h3>
+          <p class="feature-desc">Each staff gets an isolated WhatsApp session identified by a free-form <code>staff_id</code>. No limit on number of accounts.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-num">02</span>
+          <div class="feature-icon">📋</div>
+          <h3 class="feature-title">Message Queue</h3>
+          <p class="feature-desc">Insert messages into MySQL and deliver via cron trigger. Supports text, PDF, and media. Auto-retry up to configurable max attempts.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-num">03</span>
+          <div class="feature-icon">🗓️</div>
+          <h3 class="feature-title">Scheduled Messages</h3>
+          <p class="feature-desc">Set <code>scheduled_at</code> on any queued message. The cron processor delivers only when the time arrives.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-num">04</span>
+          <div class="feature-icon">🔗</div>
+          <h3 class="feature-title">Outgoing Webhooks</h3>
+          <p class="feature-desc">Set <code>WEBHOOK_URL</code> to receive incoming messages and delivery ACKs (sent / delivered / read) pushed to your system instantly.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-num">05</span>
+          <div class="feature-icon">✅</div>
+          <h3 class="feature-title">Delivery Tracking</h3>
+          <p class="feature-desc">Real-time ACK events update each message status in DB: <code>sent → delivered → read</code>. Queryable via API or visible in dashboard.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-num">06</span>
+          <div class="feature-icon">📊</div>
+          <h3 class="feature-title">Real-time Dashboard</h3>
+          <p class="feature-desc">Socket.IO-powered unified dashboard: stats, live feed, send messages, manage queue, view incoming, edit templates — all in one page.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-num">07</span>
+          <div class="feature-icon">🔐</div>
+          <h3 class="feature-title">API Key Auth</h3>
+          <p class="feature-desc">Optional API key protection on all <code>/api/*</code> endpoints via <code>x-api-key</code> header, Bearer token, or query param.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-num">08</span>
+          <div class="feature-icon">🛡️</div>
+          <h3 class="feature-title">Rate Limiting</h3>
+          <p class="feature-desc">30 req/min limit on direct-send endpoints. Configurable random delay between queue messages to mimic human behavior and avoid WA bans.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-num">09</span>
+          <div class="feature-icon">📢</div>
+          <h3 class="feature-title">Broadcast</h3>
+          <p class="feature-desc">Send one message to hundreds of numbers in a single API call. Automatic delay between sends, per-number success/fail result returned.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-num">10</span>
+          <div class="feature-icon">📝</div>
+          <h3 class="feature-title">Message Templates</h3>
+          <p class="feature-desc">Store reusable message templates in DB. Retrieve via API or select from the dashboard. Supports create, update, delete.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-num">11</span>
+          <div class="feature-icon">💾</div>
+          <h3 class="feature-title">Session Persistence</h3>
+          <p class="feature-desc">LocalAuth saves sessions to disk. On server restart, all staff sessions reconnect automatically — no re-scan QR needed.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-num">12</span>
+          <div class="feature-icon">❤️</div>
+          <h3 class="feature-title">Health Check</h3>
+          <p class="feature-desc">Public <code>/api/health</code> endpoint returns DB status, uptime, and active client count. Ready for uptime monitors and load balancers.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <div class="flex items-center gap-3 mb-3">
-            <span class="w-7 h-7 rounded-full bg-green-600 text-white text-xs flex items-center justify-center font-bold">1</span>
-            <h3 class="font-semibold">Clone & install</h3>
-          </div>
-          <pre class="code-block rounded-xl p-4 text-sm text-gray-300 overflow-x-auto"><code>git clone https://github.com/ahmadfauzirahman99/wa-multi-staff-gateway.git
-cd wa-multi-staff-gateway
+  <!-- ══ HOW IT WORKS ════════════════════════════════════════════════ -->
+  <section class="section" id="how-it-works">
+    <div class="how-header">
+      <div>
+        <div class="label">How It Works</div>
+        <h2 class="section-title">Two send modes —<br>immediate or queued.</h2>
+      </div>
+      <p class="section-sub">Choose the mode that fits your workflow. Both modes are accessible via a simple REST API.</p>
+    </div>
+
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-num-badge">01</div>
+        <h3 class="step-card-title">Immediate Send</h3>
+        <ul class="step-list">
+          <li><span class="idx">1</span><span>POST to <code>/api/send-text</code> with <code>staff_id</code> + phone + message</span></li>
+          <li><span class="idx">2</span><span>Server validates number is registered on WhatsApp</span></li>
+          <li><span class="idx">3</span><span>Message sent instantly, DB updated, <code>messageId</code> returned</span></li>
+          <li><span class="idx">4</span><span>ACK events update status to delivered → read automatically</span></li>
+        </ul>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:1.25rem;">⚠ Requires WA client to be connected</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num-badge outline">02</div>
+        <h3 class="step-card-title">Queue Mode</h3>
+        <ul class="step-list">
+          <li><span class="idx" style="background:#eaf3fb;color:#2a7ab8;">1</span><span>POST to <code>/api/queue-text</code> (or queue-pdf / queue-media)</span></li>
+          <li><span class="idx" style="background:#eaf3fb;color:#2a7ab8;">2</span><span>Row inserted to <code>wa_outgoing</code> with <code>status=pending</code></span></li>
+          <li><span class="idx" style="background:#eaf3fb;color:#2a7ab8;">3</span><span>Cron calls <code>/api/run-cron?token=SECRET</code> every N minutes</span></li>
+          <li><span class="idx" style="background:#eaf3fb;color:#2a7ab8;">4</span><span>Processor sends pending messages, updates status, retries on failure</span></li>
+        </ul>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:1.25rem;">✓ Works even if client connects after queueing</p>
+      </div>
+    </div>
+
+    <!-- Architecture -->
+    <h3 style="font-family:var(--font-head);font-size:0.8rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);text-align:center;margin-top:3.5rem;margin-bottom:0.5rem;">Architecture</h3>
+    <div class="arch-box">
+      <div class="arch-node">
+        <p>Your App</p>
+        <p>REST / Cron</p>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-node highlight">
+        <p>This Server</p>
+        <p>Express + Socket.IO</p>
+      </div>
+      <div class="arch-arrow">⇄</div>
+      <div class="arch-node">
+        <p>Sessions</p>
+        <p>whatsapp-web.js</p>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-node">
+        <p>Delivery</p>
+        <p>WhatsApp Web</p>
+      </div>
+      <div class="arch-arrow" style="transform:rotate(90deg);display:block;text-align:center;width:100%;">↓</div>
+      <div class="arch-node" style="margin-top:-0.5rem">
+        <p>Persistence</p>
+        <p>MySQL</p>
+      </div>
+      <div class="arch-node" style="margin-top:-0.5rem">
+        <p>Real-time</p>
+        <p>Socket.IO → Browser</p>
+      </div>
+      <div class="arch-node" style="margin-top:-0.5rem">
+        <p>Push</p>
+        <p>Webhook → Your URL</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ══ QUICK START ══════════════════════════════════════════════════ -->
+  <section class="section-full quickstart-bg" id="quickstart">
+    <div class="inner">
+      <div class="label">Quick Start</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:1rem;margin-bottom:0;">
+        <h2 class="section-title">Running in<br>4 steps.</h2>
+        <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank" class="btn btn-outline btn-lg">View on GitHub →</a>
+      </div>
+
+      <div class="qs-steps">
+        <div class="qs-step">
+          <div class="qs-num">01</div>
+          <div>
+            <div class="qs-title">Clone & install</div>
+            <pre class="code-block"><code>git clone https://github.com/amad-IO/bot_whatsapp.git
+cd bot_whatsapp
 npm install</code></pre>
+          </div>
         </div>
 
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <div class="flex items-center gap-3 mb-3">
-            <span class="w-7 h-7 rounded-full bg-green-600 text-white text-xs flex items-center justify-center font-bold">2</span>
-            <h3 class="font-semibold">Configure environment</h3>
-          </div>
-          <pre class="code-block rounded-xl p-4 text-sm text-gray-300 overflow-x-auto"><code>cp .env.example .env
+        <div class="qs-step">
+          <div class="qs-num">02</div>
+          <div>
+            <div class="qs-title">Configure environment</div>
+            <pre class="code-block"><code>cp .env.example .env
 # Edit .env — set DB credentials and CRON_TOKEN</code></pre>
+          </div>
         </div>
 
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <div class="flex items-center gap-3 mb-3">
-            <span class="w-7 h-7 rounded-full bg-green-600 text-white text-xs flex items-center justify-center font-bold">3</span>
-            <h3 class="font-semibold">Create database</h3>
-          </div>
-          <pre class="code-block rounded-xl p-4 text-sm text-gray-300 overflow-x-auto"><code>mysql -u root -p -e "CREATE DATABASE simrs_wa CHARACTER SET utf8mb4"
+        <div class="qs-step">
+          <div class="qs-num">03</div>
+          <div>
+            <div class="qs-title">Create database</div>
+            <pre class="code-block"><code>mysql -u root -p -e "CREATE DATABASE simrs_wa CHARACTER SET utf8mb4"
 mysql -u root -p simrs_wa &lt; schema-update.sql</code></pre>
+          </div>
         </div>
 
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <div class="flex items-center gap-3 mb-3">
-            <span class="w-7 h-7 rounded-full bg-green-600 text-white text-xs flex items-center justify-center font-bold">4</span>
-            <h3 class="font-semibold">Start server & connect</h3>
-          </div>
-          <pre class="code-block rounded-xl p-4 text-sm text-gray-300 overflow-x-auto"><code>node server-new.js
+        <div class="qs-step">
+          <div class="qs-num">04</div>
+          <div>
+            <div class="qs-title">Start server & connect</div>
+            <pre class="code-block"><code>node server-new.js
 
 # Open in browser:
 # http://localhost:3030/main-dashboard.html  — Dashboard
 # http://localhost:3030/qr-scanner.html      — Connect WhatsApp</code></pre>
+          </div>
         </div>
-
       </div>
     </div>
   </section>
 
-  <!-- ══ API OVERVIEW ══════════════════════════════════════════ -->
-  <section id="api" class="py-16 px-6">
-    <div class="max-w-5xl mx-auto">
-      <div class="text-center mb-12">
-        <h2 class="text-3xl font-bold mb-3">API Overview</h2>
-        <p class="text-gray-400">Simple REST API. Full interactive docs at <a href="api-docs.html" class="text-green-400 hover:text-green-300">/api-docs.html</a></p>
+  <!-- ══ API OVERVIEW ════════════════════════════════════════════════ -->
+  <section class="section" id="api">
+    <div class="label">API Reference</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:1rem;">
+      <h2 class="section-title">Simple REST API.</h2>
+      <a href="api-docs.html" class="btn btn-outline btn-lg">Full API Docs →</a>
+    </div>
+
+    <div class="api-grid">
+      <div class="api-card">
+        <div class="api-card-title" style="color:var(--accent-text);">Immediate Send</div>
+        <div class="api-list">
+          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/send-text</span></div>
+          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/send-media</span></div>
+          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/broadcast-text</span></div>
+        </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <h3 class="font-semibold text-green-400 mb-4 text-sm">Immediate Send</h3>
-          <div class="space-y-2 text-xs font-mono">
-            <div class="flex gap-2 items-start">
-              <span class="bg-green-900/60 text-green-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">POST</span>
-              <span class="text-gray-300">/api/send-text</span>
-            </div>
-            <div class="flex gap-2 items-start">
-              <span class="bg-green-900/60 text-green-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">POST</span>
-              <span class="text-gray-300">/api/send-media</span>
-            </div>
-            <div class="flex gap-2 items-start">
-              <span class="bg-green-900/60 text-green-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">POST</span>
-              <span class="text-gray-300">/api/broadcast-text</span>
-            </div>
-          </div>
+      <div class="api-card">
+        <div class="api-card-title" style="color:#2a7ab8;">Queue</div>
+        <div class="api-list">
+          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/queue-text</span></div>
+          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/queue-pdf</span></div>
+          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/queue-media</span></div>
+          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/run-cron?token=</span></div>
         </div>
-
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <h3 class="font-semibold text-blue-400 mb-4 text-sm">Queue</h3>
-          <div class="space-y-2 text-xs font-mono">
-            <div class="flex gap-2 items-start">
-              <span class="bg-green-900/60 text-green-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">POST</span>
-              <span class="text-gray-300">/api/queue-text</span>
-            </div>
-            <div class="flex gap-2 items-start">
-              <span class="bg-green-900/60 text-green-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">POST</span>
-              <span class="text-gray-300">/api/queue-pdf</span>
-            </div>
-            <div class="flex gap-2 items-start">
-              <span class="bg-green-900/60 text-green-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">POST</span>
-              <span class="text-gray-300">/api/queue-media</span>
-            </div>
-            <div class="flex gap-2 items-start">
-              <span class="bg-blue-900/60 text-blue-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">GET</span>
-              <span class="text-gray-300">/api/run-cron?token=</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <h3 class="font-semibold text-yellow-400 mb-4 text-sm">Messages & Status</h3>
-          <div class="space-y-2 text-xs font-mono">
-            <div class="flex gap-2 items-start">
-              <span class="bg-blue-900/60 text-blue-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">GET</span>
-              <span class="text-gray-300">/api/outgoing?page=&limit=</span>
-            </div>
-            <div class="flex gap-2 items-start">
-              <span class="bg-blue-900/60 text-blue-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">GET</span>
-              <span class="text-gray-300">/api/incoming?page=&limit=</span>
-            </div>
-            <div class="flex gap-2 items-start">
-              <span class="bg-blue-900/60 text-blue-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">GET</span>
-              <span class="text-gray-300">/api/queue/stats</span>
-            </div>
-            <div class="flex gap-2 items-start">
-              <span class="bg-green-900/60 text-green-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">POST</span>
-              <span class="text-gray-300">/api/queue/reset-failed</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <h3 class="font-semibold text-gray-300 mb-4 text-sm">Utility</h3>
-          <div class="space-y-2 text-xs font-mono">
-            <div class="flex gap-2 items-start">
-              <span class="bg-blue-900/60 text-blue-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">GET</span>
-              <span class="text-gray-300">/api/health</span>
-              <span class="text-gray-600 text-xs ml-1">(no auth)</span>
-            </div>
-            <div class="flex gap-2 items-start">
-              <span class="bg-blue-900/60 text-blue-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">GET</span>
-              <span class="text-gray-300">/api/clients</span>
-            </div>
-            <div class="flex gap-2 items-start">
-              <span class="bg-green-900/60 text-green-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">POST</span>
-              <span class="text-gray-300">/api/logout</span>
-            </div>
-            <div class="flex gap-2 items-start">
-              <span class="bg-blue-900/60 text-blue-400 px-1.5 py-0.5 rounded text-xs flex-shrink-0">GET</span>
-              <span class="text-gray-300">/api/templates</span>
-            </div>
-          </div>
-        </div>
-
       </div>
 
-      <!-- Code example -->
-      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-        <h3 class="text-sm font-semibold text-gray-300 mb-4">Example: Queue a message</h3>
-        <pre class="code-block rounded-xl p-4 text-sm text-gray-300 overflow-x-auto"><code>curl -X POST http://localhost:3030/api/queue-text \
+      <div class="api-card">
+        <div class="api-card-title" style="color:#b87a2a;">Messages & Status</div>
+        <div class="api-list">
+          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/outgoing?page=&amp;limit=</span></div>
+          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/incoming?page=&amp;limit=</span></div>
+          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/queue/stats</span></div>
+          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/queue/reset-failed</span></div>
+        </div>
+      </div>
+
+      <div class="api-card">
+        <div class="api-card-title" style="color:var(--muted);">Utility</div>
+        <div class="api-list">
+          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/health <span style="color:#ccc;font-size:0.7rem;">(no auth)</span></span></div>
+          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/clients</span></div>
+          <div class="api-item"><span class="method method-post">POST</span><span class="api-path">/api/logout</span></div>
+          <div class="api-item"><span class="method method-get">GET</span><span class="api-path">/api/templates</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Code example -->
+    <div style="margin-top:2rem;">
+      <div style="font-family:var(--font-head);font-size:0.8125rem;font-weight:600;color:var(--muted);margin-bottom:0.75rem;">Example: Queue a message</div>
+      <pre class="code-block"><code>curl -X POST http://localhost:3030/api/queue-text \
   -H "Content-Type: application/json" \
   -H "x-api-key: your-api-key" \
   -d '{
@@ -462,59 +1150,58 @@ mysql -u root -p simrs_wa &lt; schema-update.sql</code></pre>
 
 # Response:
 # { "success": true, "id": 42 }</code></pre>
-      </div>
     </div>
   </section>
 
-  <!-- ══ TECH STACK ═════════════════════════════════════════════ -->
-  <section class="py-12 px-6 bg-gray-900/40">
-    <div class="max-w-3xl mx-auto text-center">
-      <h2 class="text-xl font-semibold mb-8 text-gray-300">Built with</h2>
-      <div class="flex flex-wrap justify-center gap-3">
-        <span class="bg-gray-800 border border-gray-700 text-gray-300 px-4 py-2 rounded-xl text-sm font-medium">Node.js 18+</span>
-        <span class="bg-gray-800 border border-gray-700 text-gray-300 px-4 py-2 rounded-xl text-sm font-medium">Express 5</span>
-        <span class="bg-gray-800 border border-gray-700 text-gray-300 px-4 py-2 rounded-xl text-sm font-medium">whatsapp-web.js</span>
-        <span class="bg-gray-800 border border-gray-700 text-gray-300 px-4 py-2 rounded-xl text-sm font-medium">Puppeteer</span>
-        <span class="bg-gray-800 border border-gray-700 text-gray-300 px-4 py-2 rounded-xl text-sm font-medium">Socket.IO 4</span>
-        <span class="bg-gray-800 border border-gray-700 text-gray-300 px-4 py-2 rounded-xl text-sm font-medium">MySQL 2</span>
-        <span class="bg-gray-800 border border-gray-700 text-gray-300 px-4 py-2 rounded-xl text-sm font-medium">dotenv</span>
-        <span class="bg-gray-800 border border-gray-700 text-gray-300 px-4 py-2 rounded-xl text-sm font-medium">express-rate-limit</span>
-      </div>
+  <hr class="divider">
+
+  <!-- ══ TECH STACK ═══════════════════════════════════════════════════ -->
+  <section class="section" style="text-align:center;">
+    <div class="label" style="text-align:center;">Built With</div>
+    <h2 class="section-title" style="text-align:center;">Solid tech stack.</h2>
+    <div class="stack-pills">
+      <span class="stack-pill">Node.js 18+</span>
+      <span class="stack-pill">Express 5</span>
+      <span class="stack-pill">whatsapp-web.js</span>
+      <span class="stack-pill">Puppeteer</span>
+      <span class="stack-pill">Socket.IO 4</span>
+      <span class="stack-pill">MySQL 2</span>
+      <span class="stack-pill">dotenv</span>
+      <span class="stack-pill">express-rate-limit</span>
     </div>
   </section>
 
-  <!-- ══ CTA ════════════════════════════════════════════════════ -->
-  <section class="py-20 px-6">
-    <div class="max-w-2xl mx-auto text-center">
-      <h2 class="text-3xl font-bold mb-4">Ready to deploy?</h2>
-      <p class="text-gray-400 mb-8">Self-hosted, open source, free forever. Your data stays on your server.</p>
-      <div class="flex flex-wrap justify-center gap-3">
-        <a href="https://github.com/ahmadfauzirahman99/wa-multi-staff-gateway" target="_blank"
-           class="flex items-center gap-2 bg-white text-gray-900 hover:bg-gray-100 px-6 py-3 rounded-xl font-semibold text-sm transition-colors">
-          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+  <!-- ══ FOOTER CTA ═══════════════════════════════════════════════════ -->
+  <footer class="footer-dark">
+    <div class="footer-top">
+      <div>
+        <h2 class="footer-cta-text">Ready to deploy your own WhatsApp Gateway?</h2>
+        <p class="footer-cta-sub">Self-hosted, open source, free forever. Your data stays on your server.</p>
+      </div>
+      <div class="footer-cta-btns">
+        <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank" class="btn-white">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
           View on GitHub
         </a>
-        <a href="#quickstart" class="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-xl font-semibold text-sm transition-colors">Quick Start →</a>
+        <a href="#quickstart" class="btn-ghost-white">Quick Start →</a>
       </div>
     </div>
-  </section>
 
-  <!-- ══ FOOTER ═════════════════════════════════════════════════ -->
-  <footer class="border-t border-gray-800 py-8 px-6">
-    <div class="max-w-6xl mx-auto flex flex-wrap justify-between items-center gap-4 text-sm text-gray-500">
-      <div class="flex items-center gap-2">
+    <div class="footer-brand">©WA Gateway</div>
+
+    <div class="footer-bottom">
+      <div class="footer-logo">
         <span>📱</span>
-        <span>WA Multi-Staff Gateway</span>
-        <span class="text-gray-700">·</span>
-        <span>MIT License</span>
+        WA Multi-Staff Gateway · MIT License
       </div>
-      <div class="flex gap-4">
-        <a href="main-dashboard.html" class="hover:text-gray-300 transition-colors">Dashboard</a>
-        <a href="api-docs.html"       class="hover:text-gray-300 transition-colors">API Docs</a>
-        <a href="README.md"           class="hover:text-gray-300 transition-colors">README</a>
-        <a href="https://github.com/ahmadfauzirahman99/wa-multi-staff-gateway" target="_blank" class="hover:text-gray-300 transition-colors">GitHub</a>
+      <div class="footer-links">
+        <a href="main-dashboard.html">Dashboard</a>
+        <a href="api-docs.html">API Docs</a>
+        <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank">GitHub</a>
+        <a href="https://github.com/amad-IO/bot_whatsapp" target="_blank">amad-IO</a>
       </div>
     </div>
+    <p class="footer-copy">© 2024 amad-IO · bot_whatsapp · github.com/amad-IO/bot_whatsapp</p>
   </footer>
 
 </body>
