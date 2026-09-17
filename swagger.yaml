@@ -612,10 +612,8 @@ paths:
                 type: object
                 properties:
                   success:
-                    type: boolean
-                  total:
                     type: integer
-                  success:
+                  total:
                     type: integer
                   failed:
                     type: integer
