@@ -7,3 +7,8 @@ mysql_data/
 *.zip
 docker_logs*.txt
 chats-log.jsonl
+.agents/
+qris_images/
+*.pem
+*.dpapi
+deployment-private*

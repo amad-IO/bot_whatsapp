@@ -5,3 +5,11 @@ node_modules
 .env
 logs
 *.zip
+.agents
+test
+chats-log.jsonl
+*.pem
+*.dpapi
+deployment-private*
+.wa-sessions.json
+qris_images

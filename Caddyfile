@@ -1,0 +1,15 @@
+{
+    default_sni 20.214.155.243
+}
+https://20.214.155.243 {
+    tls {
+        issuer acme {
+            dir https://acme-v02.api.letsencrypt.org/directory
+            profile shortlived
+        }
+    }
+    encode zstd gzip
+    reverse_proxy wagateway:3030 {
+        flush_interval -1
+    }
+}

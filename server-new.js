@@ -1,6 +1,13 @@
 'use strict';
 require('dotenv').config();
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[UnhandledRejection]', reason && reason.message ? reason.message : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[UncaughtException]', err && err.message ? err.message : err);
+});
+
 const express    = require('express');
 const cors       = require('cors');
 const path       = require('path');
@@ -15,6 +22,14 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const db = require('./db');
 const eventBus = require('./eventBus');
 const cron = require('node-cron');
+const { createAuth, equal } = require('./web-auth');
+const { createTodoService, registerTodoRoutes } = require('./todo-service');
+const { migrate } = require('./migrate-todolist');
+const ready = migrate(db);
+const webAuth = createAuth({ db });
+const todoService = createTodoService({ db, eventBus, syncSheets: data => require('./ai-bot').syncToGoogleSheets(data) });
+const syncGuard = (req, res, next) => equal(req.headers['x-nusa-key'], process.env.NUSA_SYNC_KEY) ? next() : res.status(401).json({error:'Unauthorized'});
+
 
 // Inisialisasi Tabel Kontak
 (async () => {
@@ -48,7 +63,7 @@ const cron = require('node-cron');
 // ============================================================
 const PORT            = parseInt(process.env.PORT)            || 3030;
 const CHAT_LOG_FILE   = process.env.CHAT_LOG_FILE             || 'chats-log.jsonl';
-const CRON_TOKEN      = process.env.CRON_TOKEN                || 'RAHASIA_CRON_123';
+const CRON_TOKEN      = process.env.CRON_TOKEN || '';
 const API_KEY         = process.env.API_KEY                   || '';
 const WEBHOOK_URL     = process.env.WEBHOOK_URL               || '';
 const MAX_RETRY       = parseInt(process.env.MAX_RETRY)       || 3;
@@ -66,13 +81,42 @@ const SESSIONS_FILE   = '.wa-sessions.json';
 // ============================================================
 const app    = express();
 const server = http.createServer(app);
-const io     = socketIO(server, { cors: { origin: '*' } });
+const io = socketIO(server, { cors: { origin: webAuth.publicOrigin, credentials: true }, maxHttpBufferSize: 65536 });
+io.use(webAuth.socketAuth);
+app.disable('x-powered-by');
+app.set('trust proxy', 'loopback');
 
-app.use(cors());
+app.use(cors({ origin: webAuth.publicOrigin, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use(fileUpload());
-app.use('/', express.static(path.join(__dirname)));
+app.use(fileUpload({ limits: { fileSize: 10 * 1024 * 1024 }, abortOnLimit: true }));
+app.use((req, res, next) => {
+  res.set({ 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()' });
+  if (webAuth.publicOrigin.startsWith('https:')) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+  const legacy = req.path === '/main-dashboard.html' || req.path === '/' || req.path === '/index.html';
+  res.setHeader('Content-Security-Policy', legacy
+    ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+    : "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'");
+  next();
+});
+app.use('/api', async (req, res, next) => { try { await ready; next(); } catch { res.status(503).json({error:'Database belum siap.'}); } });
+webAuth.register(app);
+app.use(webAuth.load);
+// Only deliberately listed public files are served. Source, .env, backups and WA sessions stay private.
+app.use('/assets', express.static(path.join(__dirname, 'public'), { dotfiles: 'deny', index: false }));
+app.get('/login.html', (req, res) => res.sendFile(path.join(__dirname, 'public/login.html')));
+app.get(['/todolist.html', '/security.html'], webAuth.requireFull, (req, res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(path.join(__dirname, 'public', req.path.slice(1))); });
+app.get('/main-dashboard.html', webAuth.requireFull, (req, res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(path.join(__dirname, 'main-dashboard.html')); });
+app.get(['/', '/index.html'], (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/hero.jpg', (req, res) => res.sendFile(path.join(__dirname, 'hero.jpg')));
+app.get('/api-docs.html', webAuth.requireFull, (req, res) => res.sendFile(path.join(__dirname, 'api-docs.html')));
+registerTodoRoutes(app, todoService, { webGuard: webAuth.requireFull, webCsrf: webAuth.csrf, syncGuard, eventBus, protectStream:webAuth.protectStream });
+
+
+// Legacy redirects for old dashboard URLs
+app.get(['/qr-scanner.html', '/wa-dashboard.html', '/outgoing-dashboard.html', '/incoming-dashboard.html', '/dashboard'], (req, res) => {
+  res.redirect('/main-dashboard.html');
+});
 
 let clients = {};
 let qrStore = {};
@@ -154,12 +198,12 @@ function saveSessions() {
 //  AUTH MIDDLEWARE (aktif hanya jika API_KEY diset)
 // ============================================================
 function apiAuth(req, res, next) {
-  if (!API_KEY) return next();
-  const key = req.headers['x-api-key']
-    || (req.headers['authorization'] || '').replace('Bearer ', '')
-    || req.query.api_key;
-  if (key !== API_KEY)
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  if (req.webSession?.stage === 'full') {
+    if (!['GET','HEAD','OPTIONS'].includes(req.method) || req.path === '/run-cron') return webAuth.csrf(req, res, next);
+    return next();
+  }
+  const key = req.headers['x-api-key'] || (req.headers.authorization || '').replace(/^Bearer /, '');
+  if (!equal(key, API_KEY)) return res.status(401).json({ success: false, message: 'Unauthorized' });
   next();
 }
 
@@ -187,13 +231,21 @@ function connectWhatsApp(id) {
     });
   }
 
+  const puppeteerOpts = {
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
+  };
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    puppeteerOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  } else if (process.platform === 'linux' && fs.existsSync('/usr/bin/google-chrome-stable')) {
+    puppeteerOpts.executablePath = '/usr/bin/google-chrome-stable';
+  } else if (process.platform === 'win32' && fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')) {
+    puppeteerOpts.executablePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+  }
+
   const client = new Client({
     authStrategy: new LocalAuth({ clientId: id }),
-    puppeteer: {
-      headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
-    },
+    puppeteer: puppeteerOpts,
   });
 
   qrCount[id] = 0;
@@ -242,7 +294,7 @@ function connectWhatsApp(id) {
     if (msg.fromMe && msg.body.includes('\u200B')) return;
 
     // Abaikan pesan kosong (update system/presence)
-    if (!msg.body || msg.body.trim() === '') return;
+    if ((!msg.body || msg.body.trim() === '') && !msg.hasMedia) return;
 
     // Abaikan pesan dari grup
     if (msg.from.includes('@g.us')) return;
@@ -283,7 +335,7 @@ function connectWhatsApp(id) {
       if (msg.fromMe && toNum !== ownerClean) return;
       isOwner = (fromNum === ownerClean);
     } else {
-      isOwner = true; // Jika tidak ada setting owner, anggap semua owner
+      isOwner = false; // A missing owner configuration must never grant owner permissions.
     }
 
     console.log(`[${id}] Pesan masuk dari ${fromNum}: ${msg.body}`);
@@ -309,7 +361,8 @@ function connectWhatsApp(id) {
         const contact = await msg.getContact();
         const pushName = contact.pushname || contact.name || 'Tamu';
         
-        const aiResult = await aiBot.processBotMessage(msg.body, isOwner, pushName, fromNum);
+        const inputText = isOwner ? await require('./wa-media').messageText(msg) : (msg.body || '');
+        const aiResult = await aiBot.processBotMessage(inputText, isOwner, pushName, fromNum);
         
         if (typeof aiResult === 'string') {
           await msg.reply(aiResult + '\u200B');
@@ -349,12 +402,18 @@ function connectWhatsApp(id) {
     sendWebhook({ event: 'ack', message_id: msg.id.id, status });
   });
 
-  client.on('disconnected', (reason) => {
-    console.log(`[${id}] Disconnected (${reason}) — reconnect in 3s...`);
-    client.destroy();
+  client.on('disconnected', async (reason) => {
+    console.log(`[${id}] Disconnected (${reason})`);
+    try { await client.destroy(); } catch (e) {}
     delete clients[id];
     delete initializing[id];
     io.to('staff:' + id).emit('wa-reconnecting:' + id, { reason });
+    if (reason === 'LOGOUT') {
+      console.log(`[${id}] Sesi telah di-logout, menghapus dari auto-reconnect.`);
+      const saved = loadSessions().filter(s => s !== id);
+      saveSessions(saved);
+      return;
+    }
     setTimeout(() => connectWhatsApp(id), 3000);
   });
 
@@ -398,7 +457,7 @@ io.on('connection', (socket) => {
 //  MIDDLEWARE: auth untuk semua /api/ kecuali /health
 // ============================================================
 app.use('/api', (req, res, next) => {
-  if (req.path === '/health') return next();
+  if (req.path === '/health' || req.path.startsWith('/desktop/') || req.path === '/webhook/sheets') return next();
   apiAuth(req, res, next);
 });
 
@@ -438,7 +497,7 @@ app.get('/api/queue/stats', async (req, res) => {
     rows.forEach(r => { stats[r.status] = Number(r.count); });
     res.json({ success: true, stats });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -454,7 +513,7 @@ app.post('/api/queue/reset-failed', async (req, res) => {
     const [result] = await db.query(sql, params);
     res.json({ success: true, affected: result.affectedRows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -473,7 +532,7 @@ app.get('/api/outgoing', async (req, res) => {
     );
     res.json({ success: true, data: rows, total: Number(total), page, limit, pages: Math.ceil(total / limit) });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -491,7 +550,7 @@ app.get('/api/incoming', async (req, res) => {
     const [[{ total }]] = await db.query('SELECT COUNT(*) as total FROM wa_incoming');
     res.json({ success: true, data: rows, total: Number(total), page, limit });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -530,7 +589,7 @@ app.post('/api/send-text', async (req, res) => {
     res.json({ success: true, messageId: sent.id.id, dbId });
   } catch (err) {
     console.error('ERROR /api/send-text:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -561,7 +620,7 @@ app.post('/api/send-media', async (req, res) => {
     res.json({ success: true, messageId: sent.id.id, dbId });
   } catch (err) {
     console.error('ERROR /api/send-media:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -616,7 +675,7 @@ app.post('/api/queue-text', async (req, res) => {
     );
     res.json({ success: true, id: result.insertId });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -639,7 +698,7 @@ app.post('/api/queue-pdf', async (req, res) => {
     );
     res.json({ success: true, id: result.insertId });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -663,7 +722,7 @@ app.post('/api/queue-media', async (req, res) => {
     );
     res.json({ success: true, id: result.insertId });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -690,7 +749,7 @@ app.post('/api/logout', async (req, res) => {
     io.emit('wa-client-logout', { id });
     res.json({ success: true, message: `Client ${id} berhasil logout` });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -699,7 +758,7 @@ app.post('/api/logout', async (req, res) => {
 // ============================================================
 app.get('/api/run-cron', async (req, res) => {
   const token = req.query.token || req.headers['x-cron-token'] || '';
-  if (token !== CRON_TOKEN)
+  if (req.webSession?.stage !== 'full' && !equal(token, CRON_TOKEN))
     return res.status(403).json({ success: false, message: 'Forbidden' });
 
   try {
@@ -804,82 +863,30 @@ async function processQueue(limit = 20) {
 //  API: DESKTOP APP (REMINDER WIDGET)
 // ============================================================
 const desktopApiAuth = (req, res, next) => {
-  const key = process.env.DESKTOP_API_KEY;
-  if (!key) return next();
-  const provided = req.headers['x-desktop-key'];
-  if (provided !== key) return res.status(401).json({ success: false, message: 'Unauthorized' });
+  if (!equal(req.headers['x-desktop-key'], process.env.DESKTOP_API_KEY)) return res.status(401).json({error:'Unauthorized'});
   next();
 };
-
+// Transitional aliases for the old Electron app; both paths use the same TodoList service.
 app.get('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
-  try {
-    const [rows] = await db.query('SELECT id, isi, waktu, status FROM bot_reminder WHERE status IN ("Pending", "Menunggu Waktu") ORDER BY waktu ASC');
-    res.json({ success: true, data: rows });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  const data = (await todoService.list()).filter(t => !t.done).map(t => ({ id:t.id, isi:t.title, waktu:t.deadline, status:'Menunggu Waktu' })); res.json({success:true,data});
 });
-
-app.post('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
-  try {
-    const { isi, waktu } = req.body;
-    if (!isi || !waktu) return res.status(400).json({ success: false, error: 'isi and waktu required' });
-    
-    const parsedTime = new Date(waktu);
-    if (isNaN(parsedTime.getTime())) return res.status(400).json({ success: false, error: 'Invalid time format' });
-    const mysqlTime = parsedTime.toISOString().slice(0, 19).replace('T', ' ');
-
-    const [result] = await db.query('INSERT INTO bot_reminder (isi, waktu, status) VALUES (?, ?, "Menunggu Waktu")', [isi, mysqlTime]);
-    eventBus.emit('reminders-updated');
-    // Sync ke Google Sheets (fire and forget)
-    const { syncToGoogleSheets } = require('./ai-bot');
-    syncToGoogleSheets({
-      token:  process.env.GOOGLE_SHEET_TOKEN || '',
-      action: 'reminder_baru',
-      id:     result.insertId,
-      isi:    isi,
-      waktu:  mysqlTime,
-      status: 'Menunggu Waktu',
-    });
-    res.json({ success: true, id: result.insertId });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/desktop/reminders/:id/done', desktopApiAuth, async (req, res) => {
-  try {
-    const { id } = req.params;
-    await db.query('UPDATE bot_reminder SET status = "Tugas Selesai" WHERE id = ?', [id]);
-    eventBus.emit('reminders-updated');
-    // Sync status ke Google Sheets (fire and forget)
-    const { syncToGoogleSheets } = require('./ai-bot');
-    syncToGoogleSheets({
-      token:  process.env.GOOGLE_SHEET_TOKEN || '',
-      action: 'reminder_update',
-      id:     id,
-      status: 'Tugas Selesai',
-    });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+app.post('/api/desktop/reminders', desktopApiAuth, async (req,res) => res.json({success:true,...await todoService.create({title:req.body.isi,deadline:req.body.waktu})}));
+app.post('/api/desktop/reminders/:id/done', desktopApiAuth, async (req,res) => res.json(await todoService.update(req.params.id,{done:true})));
 
 app.post('/api/desktop/sync-from-sheets', async (req, res) => {
   try {
     const { token, type, data } = req.body;
-    if (token !== process.env.SHEETS_SYNC_TOKEN) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    if (!equal(token, process.env.SHEETS_SYNC_TOKEN)) return res.status(401).json({ success: false, message: 'Unauthorized' });
     
     if (type === 'reminder_status') {
       if (data && data.id && data.status) {
-        await db.query('UPDATE bot_reminder SET status = ? WHERE id = ?', [data.status, data.id]);
-        eventBus.emit('reminders-updated');
+        await db.query('UPDATE bot_todolist SET status = ?, revision=revision+1 WHERE id = ?', [data.status, data.id]);
+        todoService.changed();
       }
     }
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -890,7 +897,7 @@ app.get('/api/desktop/stream', desktopApiAuth, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', webAuth.publicOrigin);
   res.flushHeaders();
 
   // Send heartbeat every 30s to keep connection alive through proxies/firewalls
@@ -923,8 +930,8 @@ app.post('/api/webhook/sheets', async (req, res) => {
     const { sheets_token, type, ...data } = req.body;
 
     // Validasi token pengaman dari Google Sheets
-    const expectedToken = process.env.SHEETS_WEBHOOK_TOKEN || 'RAHASIA_SHEETS_WEBHOOK_TOKEN';
-    if (sheets_token !== expectedToken) {
+    const expectedToken = process.env.SHEETS_WEBHOOK_TOKEN || '';
+    if (!equal(sheets_token, expectedToken)) {
       return res.status(401).json({ success: false, error: 'Unauthorized — token tidak cocok' });
     }
 
@@ -934,19 +941,19 @@ app.post('/api/webhook/sheets', async (req, res) => {
       if (!id) return res.status(400).json({ success: false, error: 'ID reminder wajib diisi' });
 
       if (field === 'status') {
-        await db.query('UPDATE bot_reminder SET status = ? WHERE id = ?', [value, id]);
+        await db.query('UPDATE bot_todolist SET status = ?, revision=revision+1 WHERE id = ?', [value, id]);
       } else if (field === 'isi') {
-        await db.query('UPDATE bot_reminder SET isi = ? WHERE id = ?', [value, id]);
+        await db.query('UPDATE bot_todolist SET isi = ?, revision=revision+1 WHERE id = ?', [value, id]);
       } else if (field === 'waktu' && value) {
         const parsedWaktu = new Date(value);
         if (!isNaN(parsedWaktu.getTime())) {
           const mysqlWaktu = parsedWaktu.toISOString().slice(0, 19).replace('T', ' ');
-          await db.query('UPDATE bot_reminder SET waktu = ? WHERE id = ?', [mysqlWaktu, id]);
+          await db.query('UPDATE bot_todolist SET waktu = ?, revision=revision+1 WHERE id = ?', [mysqlWaktu, id]);
         }
       }
 
       // Beritahu Desktop App via SSE
-      eventBus.emit('reminders-updated');
+      todoService.changed();
       return res.json({ success: true, message: `Reminder #${id} field '${field}' diupdate` });
 
     } else if (type === 'saldo_edit') {
@@ -999,7 +1006,7 @@ app.post('/api/webhook/sheets', async (req, res) => {
 
   } catch (err) {
     console.error('[Sheets Webhook] Error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -1011,7 +1018,7 @@ app.get('/api/templates', async (req, res) => {
     const [rows] = await db.query('SELECT * FROM wa_templates ORDER BY name ASC');
     res.json({ success: true, data: rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -1026,7 +1033,7 @@ app.post('/api/templates', async (req, res) => {
     );
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -1035,7 +1042,7 @@ app.delete('/api/templates/:id', async (req, res) => {
     await db.query('DELETE FROM wa_templates WHERE id=?', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Terjadi gangguan pada server.' });
   }
 });
 
@@ -1056,41 +1063,19 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
 // ============================================================
-//  CRON REMINDER AI
+//  TODOLIST: daily noon WIB, catch up after downtime, never complete a task on send.
 // ============================================================
+let notifying = false;
 setInterval(async () => {
-  try {
-    const [rows] = await db.query("SELECT id, isi FROM bot_reminder WHERE status IN ('Pending', 'Menunggu Waktu') AND waktu <= NOW()");
-    if (rows.length === 0) return;
-    
-    const ownerNumber = process.env.OWNER_WA_NUMBER;
-    if (!ownerNumber) return;
-
-    const clientIds = Object.keys(clients);
-    if (clientIds.length === 0) return;
-    const client = clients[clientIds[0]];
-    const waId = ownerNumber + '@c.us';
-    const { syncToGoogleSheets } = require('./ai-bot');
-
-    for (const row of rows) {
-      try {
-        await client.sendMessage(waId, `⏰ *Reminder!*\n${row.isi}`);
-        await db.query("UPDATE bot_reminder SET status='Terkirim' WHERE id=?", [row.id]);
-        
-        syncToGoogleSheets({
-          token:   process.env.GOOGLE_SHEET_TOKEN || '',
-          action:  'reminder_update',
-          id:      row.id,
-          status:  'Terkirim'
-        }).catch(e => console.error('Gagal sync reminder ke sheet', e));
-      } catch (err) {
-        console.error("Gagal kirim reminder id", row.id, err.message);
-      }
-    }
-  } catch (err) {
-    console.error("Error checking reminders:", err.message);
-  }
-}, 60 * 1000);
+  if (notifying) return;
+  const owner = normalizePhone(process.env.OWNER_WA_NUMBER);
+  const client = Object.values(clients).find(c => c.info?.wid);
+  if (!owner || !client) return;
+  notifying = true;
+  try { await ready; await todoService.notifyDaily(text => client.sendMessage(owner + '@c.us', text)); }
+  catch (e) { console.error('[TodoList] Scheduler gagal:', e.message); }
+  finally { notifying = false; }
+}, 30000);
 
 // ============================================================
 //  CRON: LAPORAN KEUANGAN 08:00 PAGI
@@ -1175,11 +1160,10 @@ initTelegramBot();
 // ============================================================
 //  RUN SERVER + AUTO-START
 // ============================================================
-server.listen(PORT, () => {
-  console.log(`\n🚀 Server: http://localhost:${PORT}`);
-  console.log(`📱 QR Scanner:  http://localhost:${PORT}/qr-scanner.html`);
-  console.log(`📊 Dashboard:   http://localhost:${PORT}/wa-dashboard.html`);
-  console.log(`📊 Monitoring:  http://localhost:${PORT}/outgoing-dashboard.html`);
+ready.then(() => server.listen(PORT, () => {
+  console.log(`\n🚀 Server:     http://localhost:${PORT}`);
+  console.log(`📊 Dashboard:  http://localhost:${PORT}/main-dashboard.html`);
+  console.log(`📖 API Docs:   http://localhost:${PORT}/api-docs.html`);
   console.log(`❤  Health:     http://localhost:${PORT}/api/health`);
   if (API_KEY)     console.log(`🔐 API Key aktif`);
   if (WEBHOOK_URL) console.log(`🔗 Webhook: ${WEBHOOK_URL}`);
@@ -1190,7 +1174,7 @@ server.listen(PORT, () => {
     console.log(`\n[AUTO-START] Reconnecting: ${saved.join(', ')}`);
     saved.forEach(id => connectWhatsApp(id));
   }
-});
+})).catch(err => { console.error('[Startup] Migrasi gagal:', err.message); process.exit(1); });
 
 // Internal Queue Processor for wa_outgoing
 // Proses hanya 1 pesan per interval (60 detik) untuk menghindari deteksi spam WhatsApp
@@ -1201,3 +1185,5 @@ setInterval(async () => {
     console.error('Error auto-processing queue:', err);
   }
 }, 60000); // 1 menit sekali
+
+app.use((err, req, res, next) => { console.error('[HTTP]', err.code || err.name || 'Error'); if (!res.headersSent) res.status(500).json({error:'Terjadi gangguan pada server.'}); });

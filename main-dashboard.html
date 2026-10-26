@@ -9,6 +9,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/assets/legacy-session.js"></script>
+  <script src="/assets/purify.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script>
     tailwind.config = {
@@ -29,7 +31,7 @@
     [x-cloak] { display: none; }
     html, body { max-width: 100vw; overflow-x: hidden; }
     body { font-family: 'Poppins', sans-serif; -webkit-font-smoothing: antialiased; }
-    
+
     /* Scrollbar minimal */
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -50,7 +52,7 @@
       border-radius: 50%;
       background: #000;
     }
-    
+
     /* Clean inputs */
     input, textarea, select {
       border: 0;
@@ -71,7 +73,7 @@
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
     }
-    
+
     /* Massive Hero Typography Animation */
     .hero-title {
       background: linear-gradient(to right, #000, #333);
@@ -88,7 +90,7 @@
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
       Gateway.
     </div>
-    
+
     <!-- Desktop Menu -->
     <div class="hidden md:flex items-center gap-8 text-sm font-medium text-gray-400">
       <button onclick="showSection('overview')" id="nav-overview" class="nav-btn active hover:text-black transition-colors">Overview</button>
@@ -99,6 +101,8 @@
         Inbox
         <span id="incoming-badge" class="hidden absolute -top-2 -right-3 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
       </button>
+      <a href="/todolist.html" class="nav-btn hover:text-black">TodoList</a>
+      <button data-web-logout class="nav-btn hover:text-black">Keluar</button>
       <button onclick="showSection('templates')" id="nav-templates" class="nav-btn hover:text-black transition-colors">Templates</button>
     </div>
 
@@ -108,7 +112,7 @@
         <span id="health-dot" class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
         <span id="health-label">DB OK</span>
       </div>
-      
+
       <!-- Hamburger Button -->
       <button id="dashboard-mobile-menu-btn" class="md:hidden text-gray-900 focus:outline-none">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
@@ -126,7 +130,8 @@
         <span id="mobile-incoming-badge" class="hidden w-2 h-2 bg-red-500 rounded-full animate-pulse ml-2"></span>
       </button>
       <button onclick="showSection('templates')" class="text-sm font-semibold text-gray-700 hover:text-black py-2">Templates</button>
-      
+
+      <a href="/todolist.html" class="py-2">TodoList</a><button data-web-logout class="py-2">Keluar</button>
       <div class="flex justify-center mt-2 border-t border-gray-100 pt-4">
         <div class="flex items-center gap-1.5 text-xs font-semibold text-gray-500">
           <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
@@ -151,7 +156,7 @@
 
   <!-- ══ MAIN CONTENT ══════════════════════════════════════════ -->
   <main class="flex-1 pt-32 pb-24 px-6 max-w-6xl mx-auto w-full relative">
-    
+
     <!-- Background Decor -->
     <div class="absolute top-0 right-0 -mt-20 -mr-20 w-96 h-96 bg-blue-100/50 rounded-full blur-[100px] -z-10"></div>
     <div class="absolute top-40 left-0 -ml-20 w-72 h-72 bg-gray-200/40 rounded-full blur-[80px] -z-10"></div>
@@ -243,7 +248,7 @@
 
       <!-- Forms Container -->
       <div class="max-w-2xl mx-auto bg-white p-10 md:p-14 rounded-[2.5rem] shadow-[0_20px_60px_rgb(0,0,0,0.04)] border border-gray-100">
-        
+
         <!-- Text -->
         <div id="send-tab-text" class="space-y-8">
           <div class="grid grid-cols-2 gap-8">
@@ -358,7 +363,7 @@
         <div class="flex gap-4">
           <button onclick="runCron()" class="bg-black hover:bg-gray-800 text-white px-6 py-2.5 rounded-full text-sm font-semibold transition-colors">Run Cron Job</button>
           <button onclick="resetFailed()" class="bg-white border border-gray-200 px-6 py-2.5 rounded-full text-sm font-semibold transition-colors hover:bg-gray-50">Reset Failed</button>
-          <button onclick="loadQueue()" class="bg-white border border-gray-200 w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:bg-gray-50">↻</button>
+          <button data-action="loadQueue" data-id="" class="bg-white border border-gray-200 w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:bg-gray-50">↻</button>
         </div>
       </div>
 
@@ -396,7 +401,7 @@
           </table>
         </div>
       </div>
-      
+
       <div id="queue-pagination" class="flex justify-between items-center mt-8 text-sm text-gray-500 font-medium"></div>
     </section>
 
@@ -460,7 +465,7 @@
             </div>
           </div>
         </div>
-        
+
         <!-- List -->
         <div class="lg:col-span-3">
           <div id="template-list" class="space-y-6"></div>
@@ -475,14 +480,14 @@
     <div class="bg-white rounded-[2rem] p-10 w-full max-w-sm shadow-[0_30px_60px_rgb(0,0,0,0.1)] border border-gray-100 text-center">
       <h3 class="text-3xl font-bold tracking-tighter mb-2">Connect.</h3>
       <p id="modal-qr-id" class="text-sm text-gray-400 font-medium mb-8 bg-gray-50 inline-block px-4 py-1.5 rounded-full"></p>
-      
+
       <div id="modal-qr-img" class="flex justify-center items-center bg-gray-50/50 rounded-3xl h-64 mb-8 border border-gray-100 p-4">
         <div class="text-center text-gray-300 animate-pulse">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mx-auto mb-3"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z"></path><path d="M14 14h6v6h-6z"></path></svg>
           <p class="text-xs font-semibold uppercase tracking-widest">Generating QR</p>
         </div>
       </div>
-      
+
       <p class="text-xs text-gray-400 font-medium leading-relaxed mb-8 max-w-[200px] mx-auto">Open WhatsApp &rarr; Linked Devices &rarr; Link a Device.</p>
       <button onclick="closeQrModal()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 font-bold py-4 rounded-full text-sm transition-colors">Cancel</button>
     </div>
@@ -500,6 +505,9 @@
   <script>
   'use strict';
   const socket = io();
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let templateCache = [];
+  let pickerCache = [];
   let staffList    = [];
   let tplTarget    = null;
   let hourlyChart  = null;
@@ -509,6 +517,16 @@
   // cron token from URL param: ?cron=TOKEN
   const CRON_TOKEN = new URLSearchParams(location.search).get('cron') || '';
 
+  document.addEventListener('click', event => {
+    const edit = event.target.closest('[data-template-edit]');
+    if (edit) { const t=templateCache[Number(edit.dataset.templateEdit)]; if(t) editTemplate(t.name,t.content); }
+    const pick = event.target.closest('[data-template-pick]');
+    if (pick) { const t=pickerCache[Number(pick.dataset.templatePick)]; if(t) applyTemplate(t.content); }
+    const button = event.target.closest('[data-action]');
+    if (!button) return;
+    const actions = {removeStaffLocal,logoutStaff,connectStaff,deleteTemplate,loadQueue};
+    const fn=actions[button.dataset.action]; if(fn) fn(['loadQueue','deleteTemplate'].includes(button.dataset.action) ? Number(button.dataset.id) || 1 : button.dataset.id);
+  });
   // ── Navigation ───────────────────────────────────────────────
   function showSection(name) {
     document.querySelectorAll('section[id^="section-"]').forEach(s => s.classList.add('hidden'));
@@ -517,14 +535,14 @@
       b.classList.add('hover:text-black', 'text-gray-400', 'bg-transparent');
       b.classList.remove('bg-white','shadow-md','text-black');
     });
-    
+
     document.getElementById('section-' + name).classList.remove('hidden');
     const nb = document.getElementById('nav-' + name);
-    if (nb) { 
+    if (nb) {
       nb.classList.add('active', 'text-black');
       nb.classList.remove('text-gray-400');
     }
-    
+
     // Smooth scroll to top when changing section
     window.scrollTo({top: 0, behavior: 'smooth'});
 
@@ -546,15 +564,15 @@
     ]);
     const s = sRes.stats || {};
     const sent = (s.sent||0) + (s.delivered||0) + (s.read||0);
-    
+
     // Animate numbers (simple implementation)
     document.getElementById('stat-sent').textContent    = sent;
     document.getElementById('stat-pending').textContent = s.pending || 0;
     document.getElementById('stat-failed').textContent  = (s.failed||0) + (s.not_registered||0);
-    
-    staffList = (cRes.clients||[]).map(c=>c.id);
+
+    staffList = (cRes.clients||[]).map(c=>String(c.id).replace(/[^a-zA-Z0-9_-]/g,'-'));
     document.getElementById('stat-clients').textContent = staffList.length;
-    
+
     updateStaffSelects();
   }
 
@@ -572,9 +590,9 @@
       const el = document.getElementById(id);
       if (!el) return;
       const prev = el.value;
-      el.innerHTML = staffList.length
+      el.innerHTML = DOMPurify.sanitize(staffList.length
         ? staffList.map(s=>`<option value="${s}">${s}</option>`).join('')
-        : '<option value="">— No Active Staff —</option>';
+        : '<option value="">— No Active Staff —</option>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
       if (prev && staffList.includes(prev)) el.value = prev;
     });
   }
@@ -595,12 +613,12 @@
     const labels = Object.keys(buckets).map(h => h.toString().padStart(2,'0')+':00');
     const data   = Object.values(buckets);
     const ctx    = document.getElementById('chart-hourly').getContext('2d');
-    
+
     Chart.defaults.font.family = "'Poppins', sans-serif";
     Chart.defaults.color = '#9ca3af';
 
     if (hourlyChart) hourlyChart.destroy();
-    
+
     // Create gradient
     let gradient = ctx.createLinearGradient(0, 0, 0, 400);
     gradient.addColorStop(0, 'rgba(0,0,0,1)');
@@ -608,20 +626,20 @@
 
     hourlyChart = new Chart(ctx, {
       type: 'bar',
-      data: { labels, datasets: [{ 
-          label: 'Messages', 
-          data, 
-          backgroundColor: gradient, 
-          borderRadius: 8, 
+      data: { labels, datasets: [{
+          label: 'Messages',
+          data,
+          backgroundColor: gradient,
+          borderRadius: 8,
           borderSkipped: false,
           barPercentage: 0.6
       }] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { 
-          legend: { display: false }, 
-          tooltip: { 
+        plugins: {
+          legend: { display: false },
+          tooltip: {
             backgroundColor: '#000',
             padding: 12,
             cornerRadius: 12,
@@ -629,7 +647,7 @@
             bodyFont: { size: 13, family: "'Poppins', sans-serif" },
             callbacks: { label: ctx => ` ${ctx.raw} messages` },
             displayColors: false
-          } 
+          }
         },
         scales: {
           x: { ticks: { font: { size: 11, weight: '500' } }, grid: { display: false }, border: { display: false } },
@@ -642,7 +660,7 @@
   async function loadRecentFeed() {
     const res = await fetch('/api/outgoing?limit=30').then(r=>r.json()).catch(()=>({data:[]}));
     const feed = document.getElementById('live-feed');
-    feed.innerHTML = '';
+    feed.innerHTML = DOMPurify.sanitize('', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     (res.data||[]).forEach(r => prependFeed('out', r.staff_id, r.wa_number, r.message, r.status, r.created_at));
   }
 
@@ -651,17 +669,17 @@
     const isOut = dir !== 'in';
     const cls   = isOut ? 'text-gray-500' : 'text-black font-semibold bg-gray-50 p-2 rounded-xl border border-gray-100';
     const t     = new Date(time).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    
+
     const div = document.createElement('div');
     div.className = `${cls} py-1.5 flex items-start gap-3 transition-all`;
-    div.innerHTML = `<span class="text-gray-300 text-[10px] pt-1 w-12 flex-shrink-0 font-medium">${t}</span> 
+    div.innerHTML = DOMPurify.sanitize(`<span class="text-gray-300 text-[10px] pt-1 w-12 flex-shrink-0 font-medium">${t}</span>
                      <div class="flex-1 truncate">
                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 mr-2 uppercase tracking-widest font-bold">${staff||'?'}</span>
-                       <span class="font-bold text-gray-900">${num}</span>
+                       <span class="font-bold text-gray-900">${esc(num)}</span>
                        <span class="mx-2 text-gray-300">/</span>
-                       <span class="font-normal opacity-80">${(msg||'').substring(0,60)}</span>
-                     </div>`;
-    
+                       <span class="font-normal opacity-80">${esc((msg||'').substring(0,60))}</span>
+                     </div>`, {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
+
     feed.insertBefore(div, feed.firstChild);
     while (feed.children.length > 50) feed.removeChild(feed.lastChild);
   }
@@ -669,15 +687,15 @@
   // ── Staff ────────────────────────────────────────────────────
   async function loadStaff() {
     const cRes = await fetch('/api/clients').then(r=>r.json()).catch(()=>({clients:[]}));
-    const online = new Set((cRes.clients||[]).map(c=>c.id));
+    const online = new Set((cRes.clients||[]).map(c=>String(c.id).replace(/[^a-zA-Z0-9_-]/g,'-')));
     staffList = [...online];
     updateStaffSelects();
-    const saved = JSON.parse(localStorage.getItem('wa-staff-ids')||'[]');
+    const saved = JSON.parse(localStorage.getItem('wa-staff-ids')||'[]').filter(id => typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id));
     const all = [...new Set([...online, ...saved])];
     const grid = document.getElementById('staff-grid');
-    if (!all.length) { grid.innerHTML = '<div class="col-span-full p-20 text-center"><p class="text-gray-400 font-medium text-xl mb-4">No staff added yet.</p></div>'; return; }
-    
-    grid.innerHTML = all.map((id, index) => {
+    if (!all.length) { grid.innerHTML = DOMPurify.sanitize('<div class="col-span-full p-20 text-center"><p class="text-gray-400 font-medium text-xl mb-4">No staff added yet.</p></div>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']}); return; }
+
+    grid.innerHTML = DOMPurify.sanitize(all.map((id, index) => {
       const isOn = online.has(id);
       const numStr = String(index+1).padStart(2, '0');
       return `<div class="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-[0_10px_30px_rgb(0,0,0,0.02)] relative group hover:-translate-y-1 transition-all">
@@ -686,9 +704,9 @@
             <p class="text-xs font-bold text-gray-300 mb-1">${numStr}</p>
             <p class="font-bold text-3xl tracking-tight text-gray-900">${id}</p>
           </div>
-          <button onclick="removeStaffLocal('${id}')" class="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors" title="Remove local">✕</button>
+          <button data-action="removeStaffLocal" data-id="${id}" class="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors" title="Remove local">✕</button>
         </div>
-        
+
         <div>
           ${isOn
             ? `<div class="flex items-center justify-between">
@@ -696,37 +714,37 @@
                    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                    <span class="text-sm font-semibold text-gray-900">Connected</span>
                  </div>
-                 <button onclick="logoutStaff('${id}')" class="text-xs font-bold text-gray-400 hover:text-black underline decoration-gray-300 underline-offset-4 transition-colors">Disconnect</button>
+                 <button data-action="logoutStaff" data-id="${id}" class="text-xs font-bold text-gray-400 hover:text-black underline decoration-gray-300 underline-offset-4 transition-colors">Disconnect</button>
                </div>`
             : `<div class="flex items-center justify-between">
                  <span class="text-sm font-semibold text-gray-400">Offline</span>
-                 <button onclick="connectStaff('${id}')" class="bg-black text-white px-5 py-2 rounded-full text-xs font-bold hover:bg-gray-800 transition-colors">Link Device</button>
+                 <button data-action="connectStaff" data-id="${id}" class="bg-black text-white px-5 py-2 rounded-full text-xs font-bold hover:bg-gray-800 transition-colors">Link Device</button>
                </div>`
           }
         </div>
       </div>`;
-    }).join('');
+    }).join(''), {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
   }
 
   function addStaff() {
     const id = prompt('Enter Staff ID (e.g. admin-1):');
     if (!id || !id.trim()) return;
     const cleanId = id.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
-    const saved = JSON.parse(localStorage.getItem('wa-staff-ids')||'[]');
+    const saved = JSON.parse(localStorage.getItem('wa-staff-ids')||'[]').filter(id => typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id));
     if (!saved.includes(cleanId)) { saved.push(cleanId); localStorage.setItem('wa-staff-ids', JSON.stringify(saved)); }
     loadStaff();
   }
 
   function removeStaffLocal(id) {
     if(!confirm(`Remove "${id}" from view?`)) return;
-    const saved = JSON.parse(localStorage.getItem('wa-staff-ids')||'[]');
+    const saved = JSON.parse(localStorage.getItem('wa-staff-ids')||'[]').filter(id => typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id));
     localStorage.setItem('wa-staff-ids', JSON.stringify(saved.filter(s=>s!==id)));
     loadStaff();
   }
 
   function connectStaff(id) {
     document.getElementById('modal-qr-id').textContent = id;
-    document.getElementById('modal-qr-img').innerHTML = '<div class="text-center text-gray-300 animate-pulse"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mx-auto mb-3"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z"></path><path d="M14 14h6v6h-6z"></path></svg><p class="text-xs font-semibold uppercase tracking-widest">Generating QR</p></div>';
+    document.getElementById('modal-qr-img').innerHTML = DOMPurify.sanitize('<div class="text-center text-gray-300 animate-pulse"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mx-auto mb-3"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z"></path><path d="M14 14h6v6h-6z"></path></svg><p class="text-xs font-semibold uppercase tracking-widest">Generating QR</p></div>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     document.getElementById('modal-qr').classList.remove('hidden');
     socket.emit('check-auth', { id });
   }
@@ -761,11 +779,11 @@
     const phone = document.getElementById('send-text-phone').value.trim();
     const message = document.getElementById('send-text-msg').value.trim();
     const el = document.getElementById('send-text-result');
-    if (!id || !phone || !message) { el.innerHTML='<span class="text-red-500">All fields required.</span>'; return; }
-    
-    el.innerHTML = '<span class="text-gray-400">Sending...</span>';
+    if (!id || !phone || !message) { el.innerHTML=DOMPurify.sanitize('<span class="text-red-500">All fields required.</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']}); return; }
+
+    el.innerHTML = DOMPurify.sanitize('<span class="text-gray-400">Sending...</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     const r = await fetch('/api/send-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,phone,message})}).then(r=>r.json()).catch(e=>({success:false,error:e.message}));
-    el.innerHTML = r.success ? `<span class="text-black">Sent successfully!</span>` : `<span class="text-red-500">${r.message||r.error}</span>`;
+    el.innerHTML = DOMPurify.sanitize(r.success ? `<span class="text-black">Sent successfully!</span>` : `<span class="text-red-500">${esc(r.message||r.error)}</span>`, {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
   }
 
   async function sendMedia() {
@@ -774,14 +792,14 @@
     const caption = document.getElementById('send-media-caption').value.trim();
     const file = document.getElementById('send-media-file').files[0];
     const el = document.getElementById('send-media-result');
-    if (!id||!phone||!file) { el.innerHTML='<span class="text-red-500">Staff, phone, and file required.</span>'; return; }
-    
-    el.innerHTML = '<span class="text-gray-400">Processing file...</span>';
+    if (!id||!phone||!file) { el.innerHTML=DOMPurify.sanitize('<span class="text-red-500">Staff, phone, and file required.</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']}); return; }
+
+    el.innerHTML = DOMPurify.sanitize('<span class="text-gray-400">Processing file...</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     const b64 = await new Promise(res => { const fr=new FileReader(); fr.onload=e=>res(e.target.result.split(',')[1]); fr.readAsDataURL(file); });
-    
-    el.innerHTML = '<span class="text-gray-400">Uploading & Sending...</span>';
+
+    el.innerHTML = DOMPurify.sanitize('<span class="text-gray-400">Uploading & Sending...</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     const r = await fetch('/api/send-media',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,phone,filename:file.name,fileData:b64,caption})}).then(r=>r.json()).catch(e=>({success:false,error:e.message}));
-    el.innerHTML = r.success ? `<span class="text-black">Media sent!</span>` : `<span class="text-red-500">${r.message||r.error}</span>`;
+    el.innerHTML = DOMPurify.sanitize(r.success ? `<span class="text-black">Media sent!</span>` : `<span class="text-red-500">${esc(r.message||r.error)}</span>`, {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
   }
 
   document.addEventListener('DOMContentLoaded', ()=>{
@@ -796,13 +814,13 @@
     const message = document.getElementById('send-bc-msg').value.trim();
     const phones = document.getElementById('send-bc-phones').value.split('\n').map(s=>s.trim()).filter(Boolean);
     const el = document.getElementById('send-bc-result');
-    if (!id||!message||!phones.length) { el.innerHTML='<span class="text-red-500">All fields required.</span>'; return; }
-    
-    el.innerHTML = `<span class="text-black">Broadcasting to ${phones.length} numbers...</span>`;
+    if (!id||!message||!phones.length) { el.innerHTML=DOMPurify.sanitize('<span class="text-red-500">All fields required.</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']}); return; }
+
+    el.innerHTML = DOMPurify.sanitize(`<span class="text-black">Broadcasting to ${phones.length} numbers...</span>`, {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     const r = await fetch('/api/broadcast-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,message,phones})}).then(r=>r.json()).catch(e=>({success:false,results:[],error:e.message}));
     const ok = (r.results||[]).filter(x=>x.success).length;
     const fail = (r.results||[]).filter(x=>!x.success).length;
-    el.innerHTML = `<span class="text-black">${ok} Sent</span> <span class="text-gray-300 mx-2">|</span> <span class="text-red-500">${fail} Failed</span>`;
+    el.innerHTML = DOMPurify.sanitize(`<span class="text-black">${ok} Sent</span> <span class="text-gray-300 mx-2">|</span> <span class="text-red-500">${fail} Failed</span>`, {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
   }
 
   async function queueText() {
@@ -811,11 +829,11 @@
     const message = document.getElementById('queue-text-msg').value.trim();
     const scheduled_at = document.getElementById('queue-text-sched').value || undefined;
     const el = document.getElementById('queue-text-result');
-    if (!staff_id||!wa_number||!message) { el.innerHTML='<span class="text-red-500">Required fields missing.</span>'; return; }
-    
-    el.innerHTML = '<span class="text-gray-400">Saving...</span>';
+    if (!staff_id||!wa_number||!message) { el.innerHTML=DOMPurify.sanitize('<span class="text-red-500">Required fields missing.</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']}); return; }
+
+    el.innerHTML = DOMPurify.sanitize('<span class="text-gray-400">Saving...</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     const r = await fetch('/api/queue-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staff_id,wa_number,message,scheduled_at})}).then(r=>r.json()).catch(e=>({success:false,error:e.message}));
-    el.innerHTML = r.success ? `<span class="text-black">Added to queue #${r.id}</span>` : `<span class="text-red-500">${r.error}</span>`;
+    el.innerHTML = DOMPurify.sanitize(r.success ? `<span class="text-black">Added to queue #${r.id}</span>` : `<span class="text-red-500">${esc(r.error)}</span>`, {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
   }
 
   // ── Queue Management ─────────────────────────────────────────
@@ -829,114 +847,114 @@
       fetch(`/api/outgoing?page=${page}&limit=50`).then(r=>r.json()).catch(()=>({data:[],total:0,pages:1})),
     ]);
     const s = sRes.stats || {};
-    
-    document.getElementById('queue-stats').innerHTML = Object.entries(s).map(([k,v]) => {
+
+    document.getElementById('queue-stats').innerHTML = DOMPurify.sanitize(Object.entries(s).map(([k,v]) => {
       return `<div class="flex items-baseline gap-2">
                 <span class="text-xs uppercase tracking-widest font-bold text-gray-400">${k}</span>
                 <span class="text-2xl font-bold tracking-tighter text-black">${v}</span>
               </div>`;
-    }).join('<div class="w-px h-8 bg-gray-200"></div>');
+    }).join('<div class="w-px h-8 bg-gray-200"></div>'), {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
 
     let rows = oRes.data || [];
     if (filterStatus) rows = rows.filter(r=>r.status===filterStatus);
     if (filterStaff)  rows = rows.filter(r=>r.staff_id.toLowerCase().includes(filterStaff.toLowerCase()));
 
-    document.getElementById('queue-table').innerHTML = rows.map(r => {
+    document.getElementById('queue-table').innerHTML = DOMPurify.sanitize(rows.map(r => {
       const t = new Date(r.created_at).toLocaleString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
       const isFailed = r.status === 'failed' || r.status === 'not_registered';
       const statusColor = isFailed ? 'text-red-500' : (r.status==='sent'||r.status==='delivered'||r.status==='read' ? 'text-black' : 'text-gray-400');
-      
+
       return `<tr class="group hover:bg-gray-50/50 transition-colors">
         <td class="py-4 px-2 text-gray-300 font-mono text-xs">#${r.id}</td>
-        <td class="py-4 px-2"><span class="font-bold text-gray-900">${r.staff_id}</span></td>
-        <td class="py-4 px-2 font-mono font-medium text-gray-600">${r.wa_number}</td>
+        <td class="py-4 px-2"><span class="font-bold text-gray-900">${esc(r.staff_id)}</span></td>
+        <td class="py-4 px-2 font-mono font-medium text-gray-600">${esc(r.wa_number)}</td>
         <td class="py-4 px-2">
-          <div class="max-w-[200px] truncate text-gray-500 text-sm font-medium" title="${(r.message||'').replace(/"/g,'&quot;')}">${(r.message||'')}</div>
+          <div class="max-w-[200px] truncate text-gray-500 text-sm font-medium" title="${esc(r.message||'')}">${esc(r.message||'')}</div>
         </td>
-        <td class="py-4 px-2 text-gray-400 text-xs font-semibold uppercase tracking-widest">${r.msg_type}</td>
+        <td class="py-4 px-2 text-gray-400 text-xs font-semibold uppercase tracking-widest">${esc(r.msg_type)}</td>
         <td class="py-4 px-2">
-          <span class="${statusColor} text-[10px] font-bold uppercase tracking-widest">${r.status}</span>
+          <span class="${statusColor} text-[10px] font-bold uppercase tracking-widest">${esc(r.status)}</span>
         </td>
         <td class="py-4 px-2 text-gray-400 text-xs font-medium">${t}</td>
       </tr>`;
-    }).join('') || '<tr><td colspan="7" class="py-12 text-center text-gray-400 font-medium">No queue data found.</td></tr>';
+    }).join('') || '<tr><td colspan="7" class="py-12 text-center text-gray-400 font-medium">No queue data found.</td></tr>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
 
     document.getElementById('queue-pagination').innerHTML =
-      `<span>Page <b class="text-black">${page}</b> of ${oRes.pages||1}</span>
+      DOMPurify.sanitize(`<span>Page <b class="text-black">${page}</b> of ${oRes.pages||1}</span>
        <div class="flex gap-4">
-         ${page>1?`<button onclick="loadQueue(${page-1})" class="text-gray-400 hover:text-black font-semibold transition-colors">Previous</button>`:''}
-         ${page<(oRes.pages||1)?`<button onclick="loadQueue(${page+1})" class="text-gray-400 hover:text-black font-semibold transition-colors">Next</button>`:''}
-       </div>`;
+         ${page>1?`<button data-action="loadQueue" data-id="${page-1}" class="text-gray-400 hover:text-black font-semibold transition-colors">Previous</button>`:''}
+         ${page<(oRes.pages||1)?`<button data-action="loadQueue" data-id="${page+1}" class="text-gray-400 hover:text-black font-semibold transition-colors">Next</button>`:''}
+       </div>`, {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
   }
 
   async function runCron() {
     const el = document.getElementById('cron-result');
-    el.innerHTML = '<span class="text-gray-400 animate-pulse">Processing...</span>';
+    el.innerHTML = DOMPurify.sanitize('<span class="text-gray-400 animate-pulse">Processing...</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     const r = await fetch(`/api/run-cron?token=${encodeURIComponent(CRON_TOKEN)}&limit=20`).then(r=>r.json()).catch(e=>({success:false,error:e.message}));
-    el.innerHTML = r.success
+    el.innerHTML = DOMPurify.sanitize(r.success
       ? `<span class="text-black font-medium">Cron finished: ${r.success} succeeded, ${r.failed} failed out of ${r.total}.</span>`
-      : `<span class="text-red-500 font-medium">${r.message||r.error}</span>`;
+      : `<span class="text-red-500 font-medium">${esc(r.message||r.error)}</span>`, {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     loadQueue(1);
   }
 
   async function resetFailed() {
     const r = await fetch('/api/queue/reset-failed',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).catch(()=>({success:false}));
     const el = document.getElementById('cron-result');
-    el.innerHTML = r.success
+    el.innerHTML = DOMPurify.sanitize(r.success
       ? `<span class="text-black font-medium">${r.affected} messages reset to pending.</span>`
-      : `<span class="text-red-500 font-medium">Failed: ${r.error}</span>`;
+      : `<span class="text-red-500 font-medium">Failed: ${esc(r.error)}</span>`, {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     loadQueue(1);
   }
 
   // ── Incoming ─────────────────────────────────────────────────
   async function loadIncoming() {
     const res = await fetch('/api/incoming?limit=100').then(r=>r.json()).catch(()=>({data:[]}));
-    document.getElementById('incoming-table').innerHTML = (res.data||[]).map(r =>
+    document.getElementById('incoming-table').innerHTML = DOMPurify.sanitize((res.data||[]).map(r =>
       `<tr class="group hover:bg-gray-50/50 transition-colors">
-        <td class="py-4 px-2"><span class="font-bold text-gray-900">${r.staff_id}</span></td>
-        <td class="py-4 px-2 font-mono font-medium text-gray-600">${r.from_number}</td>
+        <td class="py-4 px-2"><span class="font-bold text-gray-900">${esc(r.staff_id)}</span></td>
+        <td class="py-4 px-2 font-mono font-medium text-gray-600">${esc(r.from_number)}</td>
         <td class="py-4 px-2">
-          <div class="max-w-md text-gray-600 text-sm font-medium">${(r.body||'')}</div>
+          <div class="max-w-md text-gray-600 text-sm font-medium">${esc((r.body||''))}</div>
         </td>
-        <td class="py-4 px-2 text-gray-400 text-xs font-semibold uppercase tracking-widest">${r.msg_type}</td>
+        <td class="py-4 px-2 text-gray-400 text-xs font-semibold uppercase tracking-widest">${esc(r.msg_type)}</td>
         <td class="py-4 px-2 text-gray-300 font-medium">${r.has_media ? 'Yes' : '—'}</td>
         <td class="py-4 px-2 text-gray-400 text-xs font-medium">${new Date(r.created_at).toLocaleString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
       </tr>`
-    ).join('') || '<tr><td colspan="6" class="py-16 text-center text-gray-400 font-medium">Inbox is empty.</td></tr>';
+    ).join('') || '<tr><td colspan="6" class="py-16 text-center text-gray-400 font-medium">Inbox is empty.</td></tr>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
   }
 
   // ── Templates ────────────────────────────────────────────────
   async function loadTemplates() {
     const res = await fetch('/api/templates').then(r=>r.json()).catch(()=>({data:[]}));
-    document.getElementById('template-list').innerHTML = (res.data||[]).map(t =>
+    document.getElementById('template-list').innerHTML = DOMPurify.sanitize((templateCache = res.data||[]).map((t,index) =>
       `<div class="bg-white rounded-3xl p-8 border border-gray-100 hover:shadow-[0_15px_40px_rgb(0,0,0,0.04)] transition-all group">
         <div class="flex justify-between items-start gap-4 mb-4">
-          <p class="font-bold text-2xl tracking-tight text-gray-900">${t.name}</p>
+          <p class="font-bold text-2xl tracking-tight text-gray-900">${esc(t.name)}</p>
           <div class="flex gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onclick="editTemplate('${t.name.replace(/'/g,"\\'")}',\`${t.content.replace(/`/g,'\\`')}\`)" class="text-xs font-bold text-gray-400 hover:text-black underline decoration-gray-300 underline-offset-4">Edit</button>
-            <button onclick="deleteTemplate(${t.id})" class="text-xs font-bold text-gray-400 hover:text-red-500 underline decoration-gray-300 underline-offset-4">Delete</button>
+            <button data-template-edit="${index}" class="text-xs font-bold text-gray-400 hover:text-black underline decoration-gray-300 underline-offset-4">Edit</button>
+            <button data-action="deleteTemplate" data-id="${t.id}" class="text-xs font-bold text-gray-400 hover:text-red-500 underline decoration-gray-300 underline-offset-4">Delete</button>
           </div>
         </div>
-        <p class="text-base font-medium text-gray-500 leading-relaxed whitespace-pre-wrap">${t.content}</p>
+        <p class="text-base font-medium text-gray-500 leading-relaxed whitespace-pre-wrap">${esc(t.content)}</p>
       </div>`
-    ).join('') || '<div class="text-center p-12"><p class="text-gray-400 font-medium text-lg">No templates created yet.</p></div>';
+    ).join('') || '<div class="text-center p-12"><p class="text-gray-400 font-medium text-lg">No templates created yet.</p></div>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
   }
 
   async function saveTemplate() {
     const name = document.getElementById('tpl-name').value.trim();
     const content = document.getElementById('tpl-content').value.trim();
     const el = document.getElementById('tpl-result');
-    if (!name||!content) { el.innerHTML='<span class="text-red-500">Name and content required.</span>'; return; }
-    
-    el.innerHTML = '<span class="text-gray-400">Saving...</span>';
+    if (!name||!content) { el.innerHTML=DOMPurify.sanitize('<span class="text-red-500">Name and content required.</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']}); return; }
+
+    el.innerHTML = DOMPurify.sanitize('<span class="text-gray-400">Saving...</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     const r = await fetch('/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,content})}).then(r=>r.json()).catch(e=>({success:false,error:e.message}));
     if (r.success) {
       document.getElementById('tpl-name').value = '';
       document.getElementById('tpl-content').value = '';
-      el.innerHTML = '<span class="text-black">Template saved!</span>';
+      el.innerHTML = DOMPurify.sanitize('<span class="text-black">Template saved!</span>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
       loadTemplates();
     } else {
-      el.innerHTML = `<span class="text-red-500">${r.error}</span>`;
+      el.innerHTML = DOMPurify.sanitize(`<span class="text-red-500">${esc(r.error)}</span>`, {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     }
   }
 
@@ -956,12 +974,12 @@
   function openTemplatePicker(fieldId) {
     tplTarget = fieldId;
     fetch('/api/templates').then(r=>r.json()).then(res => {
-      document.getElementById('modal-tpl-list').innerHTML = (res.data||[]).map(t =>
-        `<button onclick="applyTemplate(\`${t.content.replace(/`/g,'\\`')}\`)" class="w-full text-left bg-gray-50 hover:bg-white rounded-[1.5rem] p-6 border border-transparent hover:border-black hover:shadow-lg transition-all group">
-          <p class="font-bold text-xl tracking-tight text-gray-900 mb-2">${t.name}</p>
-          <p class="text-sm font-medium text-gray-500 truncate">${t.content}</p>
+      document.getElementById('modal-tpl-list').innerHTML = DOMPurify.sanitize((pickerCache = res.data||[]).map((t,index) =>
+        `<button data-template-pick="${index}" class="w-full text-left bg-gray-50 hover:bg-white rounded-[1.5rem] p-6 border border-transparent hover:border-black hover:shadow-lg transition-all group">
+          <p class="font-bold text-xl tracking-tight text-gray-900 mb-2">${esc(t.name)}</p>
+          <p class="text-sm font-medium text-gray-500 truncate">${esc(t.content)}</p>
         </button>`
-      ).join('') || '<p class="text-center text-gray-500 py-8">No templates found.</p>';
+      ).join('') || '<p class="text-center text-gray-500 py-8">No templates found.</p>', {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
       document.getElementById('modal-tpl').classList.remove('hidden');
     });
   }
@@ -992,13 +1010,14 @@
 
   socket.onAny((event, data) => {
     if (event.startsWith('qr:')) {
-      document.getElementById('modal-qr-img').innerHTML = `<img src="${data}" class="w-56 h-56 rounded-xl mix-blend-multiply" alt="QR Code">`;
+      if (typeof data !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(data)) return;
+      document.getElementById('modal-qr-img').innerHTML = DOMPurify.sanitize(`<img src="${data}" class="w-56 h-56 rounded-xl mix-blend-multiply" alt="QR Code">`, {FORBID_TAGS:['style','svg','math'], FORBID_ATTR:['style']});
     }
     if (event.startsWith('connected:')) {
       const id = event.replace('connected:','');
       closeQrModal();
       if (!staffList.includes(id)) { staffList.push(id); updateStaffSelects(); }
-      const saved = JSON.parse(localStorage.getItem('wa-staff-ids')||'[]');
+      const saved = JSON.parse(localStorage.getItem('wa-staff-ids')||'[]').filter(id => typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id));
       if (!saved.includes(id)) { saved.push(id); localStorage.setItem('wa-staff-ids', JSON.stringify(saved)); }
       loadStats();
       if(document.getElementById('section-staff').classList.contains('hidden') === false) loadStaff();
