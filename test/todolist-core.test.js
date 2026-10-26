@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {naturalParts,parseDeadline,sqlTime,reminderDay}=require('../todo-time');
-const {merge,observeCompletions,hasServerChanges,validateTasks}=require('../nusa-sync/core');
+const {merge,upgradeState,observeCompletions,observeRemovals,waitingForRemovals,hasServerChanges,validateTasks}=require('../nusa-sync/core');
 const {createTodoChat}=require('../todo-chat');
 const now=new Date('2026-10-27T03:00:00Z');
 test('Indonesian dates, next calendar week, midnight boundary and ambiguous clock',()=>{
@@ -64,4 +64,49 @@ test('WA completion refuses ambiguous titles and accepts an exact task ID',async
  const chat=createTodoChat({db:memoryDb(),service,now:()=>now});
  assert.match(await chat.handle('x','selesai desain',{intent:'selesai_todolist',keyword:'desain'}),/beberapa/);assert.equal(updated.length,0);
  assert.match(await chat.handle('x','selesai tugas #2',{intent:'selesai_todolist'}),/dihentikan/);assert.equal(updated[0][0],2);
+});
+test('X queues a durable archive and cannot be resurrected by another task update or a connector restart',()=>{
+ const first=merge('',[task],{version:2,tasks:{},pending:[],pendingArchives:[]},now);
+ let state=first.state;observeRemovals('',state,1000);assert.equal(waitingForRemovals(state),true);assert.equal(state.pendingArchives.length,0);
+ observeRemovals('',state,2600);assert.deepEqual(state.pendingArchives,[{id:42,displayVersion:1}]);
+ state=JSON.parse(JSON.stringify(state));
+ const other={...task,id:43,title:'New task'};
+ const offline=merge('',[task,other],state,now);assert.doesNotMatch(offline.text,/WA #42/);assert.match(offline.text,/WA #43/);
+ const archived={...task,archived:true,displayVersion:1};
+ const empty=merge('',[archived],{version:2,tasks:{},pending:[],pendingArchives:[]},now);assert.equal(empty.text,'');
+ const restored=merge('',[{...task,displayVersion:2}],{...state,pendingArchives:[]},now);assert.match(restored.text,/WA #42/);assert.equal(restored.state.tasks[42].visible,true);
+});
+test('temporary truncation, a missing file, incomplete rows and manual tasks never trigger an archive',()=>{
+ const first=merge('0\t1\t2\t0\tManual\n',[task],{version:2,tasks:{},pending:[],pendingArchives:[]},now);
+ const state=first.state;
+ observeRemovals(null,state,1000);observeRemovals('broken row',state,3000);assert.equal(state.pendingArchives.length,0);
+ observeRemovals('',state,4000);observeRemovals(first.text,state,4500);observeRemovals(first.text,state,7000);assert.equal(state.pendingArchives.length,0);assert.equal(waitingForRemovals(state),false);
+ const renamed=first.text.replace('Desain interaksi','Changed locally');observeRemovals(renamed,state,8000);observeRemovals(renamed,state,10000);assert.equal(state.pendingArchives.length,0);
+});
+test('legacy missing completed history stays hidden; newly removed completed rows are archived',()=>{
+ const legacy={version:1,tasks:{42:{...task,done:true,lineTitle:'old completed title'}},pending:[]};
+ const upgraded=upgradeState(legacy,'');observeRemovals('',upgraded,1);observeRemovals('',upgraded,5000);assert.equal(upgraded.pendingArchives.length,0);
+ const first=merge('',[task],{version:2,tasks:{},pending:[],pendingArchives:[]},now);
+ const done=merge(first.text,[{...task,done:true}],first.state,now);observeRemovals('',done.state,1);observeRemovals('',done.state,2000);assert.equal(done.state.pendingArchives[0].id,42);
+ const restored=merge('',[{...task,done:true,displayVersion:2}],{...done.state,pendingArchives:[]},now);assert.match(restored.text,/^1\t/);
+});
+test('jam 3 nanti chooses the next occurrence in WIB; bare jam 12 still needs clarification',()=>{
+ assert.deepEqual(naturalParts('ingetin bangun tidur jam 3 nanti',new Date('2026-10-26T19:27:00Z')),{date:'2026-10-27',time:'03:00',ambiguous:false,conflict:false});
+ assert.equal(naturalParts('jam 3 nanti',new Date('2026-10-27T07:27:00Z')).time,'15:00');
+ assert.equal(naturalParts('jam 3 nanti',new Date('2026-10-27T15:27:00Z')).date,'2026-10-28');
+ assert.equal(naturalParts('jam 12 nanti',new Date('2026-10-27T04:27:00Z')).ambiguous,true);
+});
+test('hari ini continues a pending wake-up task and never calls the finance classifier',async()=>{
+ const db=memoryDb(),created=[];const night=new Date('2026-10-26T19:27:00Z');
+ db.drafts.set('owner',JSON.stringify({title:'bangun tidur',date:null,time:null,history:['ingetin bangun tidur jam 3 nanti'],reference:night.toISOString()}));
+ const chat=createTodoChat({db,service:{create:async data=>{created.push(data);return{id:1};}},classify:async()=>{throw Error('Must not classify a short follow-up as a new topic');},now:()=>night});
+ assert.match(await chat.handle('owner','hari ini'),/disimpan/);assert.equal(created[0].deadline,'2026-10-26T20:00:00.000Z');assert.equal(created[0].title,'bangun tidur');
+});
+test('a complete wake-up request needs no repeated date question; a period reply completes an ambiguous hour',async()=>{
+ const night=new Date('2026-10-26T19:27:00Z'),db=memoryDb(),created=[];
+ const chat=createTodoChat({db,service:{create:async data=>{created.push(data);return{id:1};}},now:()=>night});
+ assert.match(await chat.handle('owner','ingetin bangun tidur jam 3 nanti',{intent:'tambah_todolist',isi:'bangun tidur',jam_ambigu:true}),/disimpan/);
+ assert.equal(created[0].deadline,'2026-10-26T20:00:00.000Z');
+ db.drafts.set('owner',JSON.stringify({title:'meeting',date:'2026-10-28',time:null,history:['jam 3'],reference:night.toISOString()}));
+ assert.match(await chat.handle('owner','sore'),/disimpan/);assert.equal(created[1].deadline,'2026-10-28T08:00:00.000Z');
 });

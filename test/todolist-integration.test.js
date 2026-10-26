@@ -45,15 +45,36 @@ test('isolated MySQL: migration, code-only login + TOTP, access boundaries, Todo
   assert.equal((await call('/api/todolist/'+id,{method:'PATCH',body:{title:'outdated',revision:999}})).response.status,409);
   assert.equal((await call('/api/nusa/tasks')).response.status,401);
   assert.equal((await call('/api/nusa/tasks',{headers:{'X-Nusa-Key':'scoped-test-key'}})).response.status,200);
+  assert.equal((await call('/api/nusa/tasks',{headers:{'X-Nusa-Key':'scoped-test-key'}})).data.protocolVersion,2);
   assert.equal((await call('/api/nusa/tasks',{method:'POST',headers:{'X-Nusa-Key':'scoped-test-key'},body:{title:'must not create'}})).response.status,404);
+  const archivedTask=await service.create({title:'Archived on Nusa',deadline:'2026-11-05 18:00'});
+  assert.equal((await call('/api/nusa/tasks/'+archivedTask.id+'/archive',{body:{displayVersion:1}})).response.status,401);
+  assert.equal((await call('/api/nusa/tasks/'+archivedTask.id+'/archive',{headers:{'X-Nusa-Key':'scoped-test-key'},body:{}})).response.status,400);
+  assert.equal((await call('/api/nusa/tasks/'+archivedTask.id+'/archive',{headers:{'X-Nusa-Key':'scoped-test-key'},body:{displayVersion:1}})).data.applied,true);
+  let archived=(await service.list()).find(x=>x.id===archivedTask.id);assert.equal(archived.archived,true);assert.equal(archived.done,false);assert.equal(archived.nextReminder,null);
+  await migrate(db);assert.equal((await service.list()).find(x=>x.id===archivedTask.id).archived,true);
+  assert.equal((await call('/api/nusa/tasks/'+archivedTask.id+'/done',{headers:{'X-Nusa-Key':'scoped-test-key'},body:{}})).data.applied,false);
+  assert.equal((await call('/api/todolist/'+archivedTask.id+'/restore',{headers:{'X-CSRF-Token':''},body:{revision:archived.revision}})).response.status,403);
+  assert.equal((await call('/api/todolist/'+archivedTask.id+'/restore',{body:{revision:archived.revision}})).data.applied,true);
+  archived=(await service.list()).find(x=>x.id===archivedTask.id);assert.equal(archived.displayVersion,2);assert.equal(archived.archived,false);
+  assert.equal((await call('/api/nusa/tasks/'+archivedTask.id+'/archive',{headers:{'X-Nusa-Key':'scoped-test-key'},body:{displayVersion:1}})).data.applied,false); // old offline deletion cannot override restore
+  assert.equal((await service.list()).find(x=>x.id===archivedTask.id).archived,false);
+  assert.equal((await call('/api/nusa/tasks/'+archivedTask.id+'/archive',{headers:{'X-Nusa-Key':'scoped-test-key'},body:{displayVersion:2}})).data.applied,true);
+  assert.equal((await call('/api/nusa/tasks/'+archivedTask.id+'/archive',{headers:{'X-Nusa-Key':'scoped-test-key'},body:{displayVersion:2}})).data.applied,false); // retry is idempotent
   const sent=[];await service.notifyDaily(text=>sent.push(text),new Date('2026-11-02T05:00:00Z'));assert.equal(sent.length,0);
   await service.notifyDaily(text=>sent.push(text),new Date('2026-11-03T04:59:00Z'));assert.equal(sent.length,0);
   await Promise.all([service.notifyDaily(text=>sent.push(text),new Date('2026-11-03T05:00:00Z')),service.notifyDaily(text=>sent.push(text),new Date('2026-11-03T05:00:00Z'))]);assert.equal(sent.filter(s=>s.includes('Test task')).length,1);
+  assert.equal(sent.filter(s=>s.includes('Archived on Nusa')).length,0);
   assert.equal((await service.list()).find(x=>x.id===id).done,false);
   await service.update(id,{done:true});await service.notifyDaily(text=>sent.push(text),new Date('2026-11-04T05:00:00Z'));assert.equal(sent.filter(s=>s.includes('Test task')).length,1);
   const failing=await service.create({title:'Network uncertain',deadline:'2026-11-05 18:00'});let attempts=0;
   await service.notifyDaily(async text=>{if(text.includes('Network uncertain')){attempts++;throw Error('timeout');}},new Date('2026-11-03T05:00:00Z'));
   await service.notifyDaily(async text=>{if(text.includes('Network uncertain'))attempts++;},new Date('2026-11-03T05:01:00Z'));assert.equal(attempts,1);
+  const wake=await service.create({title:'Wake up at three',deadline:'2026-11-06 03:00'});const dueSent=[];
+  await service.notifyDue(text=>dueSent.push(text),new Date('2026-11-05T19:59:00Z'));assert.equal(dueSent.filter(x=>x.includes('Wake up at three')).length,0);
+  await service.notifyDue(text=>dueSent.push(text),new Date('2026-11-05T20:00:00Z'));await service.notifyDue(text=>dueSent.push(text),new Date('2026-11-05T20:00:30Z'));assert.equal(dueSent.filter(x=>x.includes('Wake up at three')).length,1);assert.equal(dueSent.filter(x=>x.includes('Archived on Nusa')).length,0);
+  const noon=await service.create({title:'Noon task',deadline:'2026-11-07 12:00'});const noonSent=[];
+  await service.notifyDue(text=>noonSent.push(text),new Date('2026-11-07T05:00:00Z'));await service.notifyDaily(text=>noonSent.push(text),new Date('2026-11-07T05:00:00Z'));assert.equal(noonSent.filter(x=>x.includes('Noon task')).length,1);
   await call('/api/auth/logout',{body:{}});assert.equal((await call('/api/todolist')).response.status,401);
   cookie='';csrf='';
   assert.equal((await call('/api/auth/enroll',{body:{}})).response.status,403); // public requests cannot obtain the QR

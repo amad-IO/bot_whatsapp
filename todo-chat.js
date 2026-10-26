@@ -6,13 +6,16 @@ function createTodoChat({ db, service, classify, now = () => new Date() }) {
     const [rows] = await db.query('SELECT draft FROM todo_conversations WHERE chat_id=? AND expires_at>UTC_TIMESTAMP()', [chatId]);
     let draft = rows[0] ? (typeof rows[0].draft === 'string' ? JSON.parse(rows[0].draft) : rows[0].draft) : null;
     if (draft && /^(batal|batalkan|cancel)$/i.test(text.trim())) { await db.query('DELETE FROM todo_conversations WHERE chat_id=?', [chatId]); return 'Pembuatan TodoList dibatalkan.'; }
-    const intent = existingIntent || await classify(text, draft);
+    const shortReply=text.trim().toLowerCase().replace(/[?!.,]+$/,'').replace(/\s+/g,' ');
+    const dateReply=/^(?:(?:iya|ya|untuk|deadline(?:nya)?|tanggalnya)\s+)?(?:hari ini|besok|lusa|(?:minggu depan(?: (?:tanggal|tgl) \d{1,2})?)|(?:tanggal|tgl) \d{1,2}(?: [a-z]+(?: 20\d\d)?)?|\d{4}-\d\d-\d\d)(?:\s+(?:jam|pukul)\s+\d{1,2}(?:[.:]\d{2})?(?:\s+(?:pagi|siang|sore|malam|nanti))*)?$/i.test(shortReply);
+    const timeReply=/^(?:(?:iya|ya|sebelum|sebelom|seblm)\s+)?(?:(?:jam|pukul)\s+)?\d{1,2}(?:[.:]\d{2})?(?:\s+(?:pagi|siang|sore|malam|nanti))*$|^(pagi|siang|sore|malam)$/i.test(shortReply);
+    const intent = existingIntent || (draft && (dateReply || timeReply) ? {intent:'lanjut_todolist'} : await classify(text, draft));
     if (['list_todolist','list_reminder'].includes(intent.intent)) {
-      const active = (await service.list()).filter(t => !t.done);
+      const active = (await service.list()).filter(t => !t.done && !t.archived);
       return active.length ? '📋 *TodoList aktif*\n' + active.map(t => `#${t.id} ${t.title}\n${formatWib(t.deadline)}`).join('\n\n') : '✅ Semua tugas sudah selesai.';
     }
     if (['selesai_todolist','selesai_reminder'].includes(intent.intent)) {
-      const all = (await service.list()).filter(t => !t.done);
+      const all = (await service.list()).filter(t => !t.done && !t.archived);
       const id = text.match(/#(\d+)/) || String(intent.keyword || '').match(/^(\d+)$/);
       const matches = id ? all.filter(t => t.id === +id[1]) : all.filter(t => intent.keyword && t.title.toLowerCase().includes(String(intent.keyword).toLowerCase()));
       if (matches.length !== 1) return matches.length ? 'Ada beberapa tugas yang cocok. Balas selesai tugas #ID:\n' + matches.map(t => `#${t.id} ${t.title}`).join('\n') : 'Tugas aktif tidak ditemukan. Ketik daftar TodoList untuk melihat ID.';
@@ -20,7 +23,18 @@ function createTodoChat({ db, service, classify, now = () => new Date() }) {
     }
     if (!['tambah_todolist','tambah_reminder','lanjut_todolist'].includes(intent.intent)) return { nonTodoIntent: intent };
     draft ||= { title: null, date: null, time: null, history: [], reference: now().toISOString() };
-    const parts = naturalParts(text, now());
+    let parseText=text;
+    if(/^\d{1,2}$/.test(shortReply))parseText=(draft.date?'jam ':'tanggal ')+shortReply;
+    let parts = naturalParts(parseText, now());
+    if(!draft.time && !parts.time && dateReply){
+      const previous=draft.history.slice().reverse().find(t=>/\b(?:jam|pukul)\s*\d{1,2}/i.test(t));
+      if(previous){const recovered=naturalParts(previous,new Date(draft.reference||now()));if(recovered.time)draft.time=recovered.time;}
+    }
+    // Recover an ambiguous hour when the next message is just 'pagi'/'sore'/etc.
+    if(!parts.time && /^(pagi|siang|sore|malam)$/i.test(shortReply)){
+      const previous=draft.history.slice().reverse().find(t=>/\b(?:jam|pukul)\s*\d{1,2}/i.test(t));
+      if(previous)parts=naturalParts(previous+' '+shortReply,now());
+    }
     // Explicit new statements override the draft; don't silently manufacture missing date/time.
     if (intent.isi && intent.isi !== 'null') draft.title = intent.isi;
     if (parts.date || intent.tanggal) draft.date = parts.date || intent.tanggal;
@@ -28,7 +42,7 @@ function createTodoChat({ db, service, classify, now = () => new Date() }) {
     if (parts.ambiguous || (intent.jam_ambigu === true && !parts.time)) draft.time = null;
     if (/minggu depan/i.test(text) && !parts.date && !/senin|selasa|rabu|kamis|jumat|sabtu|minggu depan hari minggu/i.test(text)) draft.date = null;
     if (parts.conflict) draft.date = null;
-    draft.history.push(text.slice(0, 3000)); draft.history = draft.history.slice(-8);
+    draft.history.push(parseText.slice(0, 3000)); draft.history = draft.history.slice(-8);
     let question;
     if (!draft.title) question = 'Tugas apa yang ingin dimasukkan ke TodoList?';
     else if (parts.conflict) question = 'Tanggal itu tidak cocok dengan minggu yang disebutkan. Deadline tanggal berapa tepatnya?';
@@ -41,7 +55,7 @@ function createTodoChat({ db, service, classify, now = () => new Date() }) {
         else {
           const result = await service.create({ title: draft.title, deadline: deadline.toISOString() });
           await db.query('DELETE FROM todo_conversations WHERE chat_id=?', [chatId]);
-          return `📋 TodoList #${result.id} disimpan: ${draft.title}\nDeadline: ${formatWib(deadline)}\nPengingat setiap 12.00 WIB mulai H-2 sampai tugas selesai.`;
+          return `📋 TodoList #${result.id} disimpan: ${draft.title}\nJadwal: ${formatWib(deadline)}\nPengingat pada jadwal tersebut, ditambah pengingat harian 12.00 WIB mulai H-2 sampai selesai.`;
         }
       } catch { draft.date = null; draft.time = null; question = 'Tanggal atau jamnya belum valid. Sebutkan deadline lengkapnya, ya.'; }
     }

@@ -25,10 +25,13 @@ Selain konfigurasi WA/database yang sudah ada, runtime memerlukan `PUBLIC_ORIGIN
 ## Perilaku
 
 - Deadline WIB; percakapan tugas yang belum lengkap disimpan 24 jam.
-- Pengingat setiap 12.00 WIB mulai H-2 sampai selesai; tugas lewat deadline tetap aktif.
+- Pengingat pada waktu tugas, ditambah setiap 12.00 WIB mulai H-2 sampai selesai; tugas lewat deadline tetap aktif. Pengingat waktu yang terlewat saat layanan mati dapat menyusul dalam jendela 24 jam. Status pengiriman yang tidak pasti tidak diulang otomatis.
 - Penyelesaian melalui WA/web/Nusa menghentikan pengingat setelah server menerima statusnya.
 - Suara memakai Groq; JPG/PNG/WebP/PDF memakai Gemini; maksimal 10 MB.
-- Penghubung `nusa-sync` hanya membaca tugas dan mengirim status selesai. Perubahan masuk dari server memuat ulang Nusa. Centang selesai dan pengakuan statusnya tidak merestart Nusa.
+- Penghubung `nusa-sync` hanya membaca tugas dan mengirim status selesai/arsip. Perubahan masuk dari server memuat ulang Nusa. Centang selesai, penghapusan lokal, dan pengakuan statusnya tidak merestart Nusa.
+- Tombol X dianggap sebagai arsip setelah penghapusan baris terpetakan bertahan pada dua pembacaan file. Tugas hilang dari Nusa, riwayat tetap di server, dan semua pengingat berhenti. File hilang/penulisan belum lengkap tidak dianggap sebagai penghapusan tugas. Penghapusan offline tetap diantrekan.
+- Filter Diarsipkan dan tombol Pulihkan tersedia di web. Pemulihan meningkatkan versi tampilan, sehingga antrean penghapusan lama dari laptop tidak dapat membatalkan pemulihan. Penghubung versi 2 wajib dipasang setelah server mendukung protokol arsip.
+- Jawaban tanggal/jam singkat melanjutkan draft TodoList sebelum klasifikasi topik baru. Contoh pukul 02.27 WIB: “ingetin bangun tidur jam 3 nanti” menjadi hari ini 03.00; “jam 12” tetap meminta siang/malam.
 - Tugas manual Nusa dipertahankan; pembuatan tugas manual lokal belum diunggah ke server. Ketahanan Pomodoro aktif dan seluruh item Shelf saat restart belum terverifikasi.
 
 ## Pemeriksaan

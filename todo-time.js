@@ -19,7 +19,7 @@ function isoFromSql(value) { return value instanceof Date ? value.toISOString() 
 function formatWib(value) { return new Date(value).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' }) + ' WIB'; }
 function reminderDay(deadline, lead = 2) { return new Date(+new Date(deadline) + WIB - lead * DAY).toISOString().slice(0, 10); }
 function nextReminder(task, now = new Date()) {
-  if (task.done) return null;
+  if (task.done || task.archived) return null;
   const today = localParts(now).slice(0, 10);
   let day = reminderDay(task.deadline, task.leadDays);
   if (day < today) day = today;
@@ -57,12 +57,25 @@ function naturalParts(text, now = new Date()) {
     if (m) {
       let h = +m[1]; const min = +(m[2] || 0), period = m[3];
       ambiguous = h >= 1 && h <= 12 && !period && !m[2];
+      // 'Jam 3 nanti' means the next 03:00/15:00 occurrence, anchored in WIB.
+      // Bare 'jam 12' still needs siang/malam clarification as agreed.
+      if(ambiguous && h!==12 && (!date || date===today) && /\bnanti\b/.test(s)){
+        const current=localParts(now),minutes=Number(current.slice(11,13))*60+Number(current.slice(14,16));
+        const candidates=[h,h+12].filter(x=>x*60+min>minutes);h=candidates[0]??h;
+        ambiguous=false;
+        if(!date)date=new Date(+base+(candidates.length?0:DAY)).toISOString().slice(0,10);
+      }
       if (period === 'malam' && h === 12) h = 0;
       else if (['siang','sore','malam'].includes(period) && h < 12) h += 12;
       else if (period === 'pagi' && h === 12) h = 0;
       if (h > 23 || min > 59) ambiguous = true;
       if (!ambiguous) time = String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0');
     }
+  }
+  if(time && !date && /\bnanti\b/.test(s)){
+    const current=localParts(now),minutes=Number(current.slice(11,13))*60+Number(current.slice(14,16));
+    const target=Number(time.slice(0,2))*60+Number(time.slice(3,5));
+    date=new Date(+base+(target>minutes?0:DAY)).toISOString().slice(0,10);
   }
   return { date, time, ambiguous, conflict };
 }

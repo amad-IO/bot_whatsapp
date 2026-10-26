@@ -868,7 +868,7 @@ const desktopApiAuth = (req, res, next) => {
 };
 // Transitional aliases for the old Electron app; both paths use the same TodoList service.
 app.get('/api/desktop/reminders', desktopApiAuth, async (req, res) => {
-  const data = (await todoService.list()).filter(t => !t.done).map(t => ({ id:t.id, isi:t.title, waktu:t.deadline, status:'Menunggu Waktu' })); res.json({success:true,data});
+  const data = (await todoService.list()).filter(t => !t.done && !t.archived).map(t => ({ id:t.id, isi:t.title, waktu:t.deadline, status:'Menunggu Waktu' })); res.json({success:true,data});
 });
 app.post('/api/desktop/reminders', desktopApiAuth, async (req,res) => res.json({success:true,...await todoService.create({title:req.body.isi,deadline:req.body.waktu})}));
 app.post('/api/desktop/reminders/:id/done', desktopApiAuth, async (req,res) => res.json(await todoService.update(req.params.id,{done:true})));
@@ -1072,7 +1072,7 @@ setInterval(async () => {
   const client = Object.values(clients).find(c => c.info?.wid);
   if (!owner || !client) return;
   notifying = true;
-  try { await ready; await todoService.notifyDaily(text => client.sendMessage(owner + '@c.us', text)); }
+  try { await ready; const send=text=>client.sendMessage(owner+'@c.us',text); await todoService.notifyDue(send); await todoService.notifyDaily(send); }
   catch (e) { console.error('[TodoList] Scheduler gagal:', e.message); }
   finally { notifying = false; }
 }, 30000);

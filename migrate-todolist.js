@@ -12,6 +12,8 @@ async function migrate(db) {
   const columns = [
     ['lead_days', 'TINYINT UNSIGNED NOT NULL DEFAULT 2'],
     ['revision', 'INT UNSIGNED NOT NULL DEFAULT 1'],
+    ['archived_at', 'DATETIME NULL'],
+    ['display_version', 'INT UNSIGNED NOT NULL DEFAULT 1'],
     ['updated_at', 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP']
   ];
   for (const [name, type] of columns) {
@@ -26,6 +28,10 @@ async function migrate(db) {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await db.query(`CREATE TABLE IF NOT EXISTS todo_conversations (
     chat_id VARCHAR(100) PRIMARY KEY, draft JSON NOT NULL, expires_at DATETIME NOT NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await db.query(`CREATE TABLE IF NOT EXISTS todo_due_notifications (
+    task_id INT NOT NULL, due_time DATETIME NOT NULL, state VARCHAR(16) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(task_id,due_time)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await db.query(`CREATE TABLE IF NOT EXISTS web_admin (
     id INT PRIMARY KEY, username VARCHAR(100) NOT NULL UNIQUE, password_hash VARCHAR(255) NOT NULL,
