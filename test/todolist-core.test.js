@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {naturalParts,parseDeadline,sqlTime,reminderDay}=require('../todo-time');
-const {merge,upgradeState,observeCompletions,observeRemovals,waitingForRemovals,hasServerChanges,validateTasks}=require('../nusa-sync/core');
+const {merge,parseRows,identityOf,upgradeState,observeCompletions,observeRemovals,waitingForRemovals,hasServerChanges,validateTasks}=require('../nusa-sync/core');
 const {createTodoChat}=require('../todo-chat');
 const now=new Date('2026-10-27T03:00:00Z');
 test('Indonesian dates, next calendar week, midnight boundary and ambiguous clock',()=>{
@@ -42,6 +42,23 @@ test('Nusa rejects malicious row delimiters, duplicate IDs and invalid server pa
  for(const bad of [{...task,title:'bad\n1\t0\t0\t0\tpayload'}, {...task,id:'../../file'}, {...task,deadline:'bad'}, {...task,done:'true'}])assert.throws(()=>validateTasks([bad]));
  assert.throws(()=>validateTasks([task,task]));
 });
+test('visible WA labels migrate away while completion and archive retain the same task ID',()=>{
+ const oldTitle='[WA #42] Desain interaksi · 05/11/2026 18:00 WIB';
+ const text='0\t1080\t1080\t20261027\t'+oldTitle+'\n';
+ const state={version:2,tasks:{42:{...task,lineTitle:oldTitle,visible:true,displayVersion:1}},pending:[],pendingArchives:[]};
+ observeRemovals(text,state,1000);assert.equal(state.pendingArchives.length,0);assert.equal(hasServerChanges([task],state),true);
+ const migrated=merge(text,[task],state,now);assert.doesNotMatch(migrated.text,/\[WA #/);assert.match(migrated.text,/Desain interaksi/);assert.equal(identityOf(parseRows(migrated.text)[0].title),42);
+ assert.equal(hasServerChanges([task],migrated.state),false);
+ assert.deepEqual(observeCompletions(migrated.text.replace(/^0\t/,'1\t'),migrated.state),[42]);
+ observeRemovals('',migrated.state,1000);observeRemovals('',migrated.state,3000);assert.deepEqual(migrated.state.pendingArchives,[{id:42,displayVersion:1}]);
+});
+test('identical visible titles and deadlines still map to separate task IDs',()=>{
+ const second={...task,id:43};const initial=merge('',[task,second],{version:2,tasks:{},pending:[],pendingArchives:[]},now);
+ const rows=parseRows(initial.text);const visible=s=>s.replace(/[\u200B\u200C\u2063]/g,'');assert.equal(visible(rows[0].title),visible(rows[1].title));
+ assert.notEqual(rows[0].title,rows[1].title);assert.equal(identityOf(rows[0].title),42);assert.equal(identityOf(rows[1].title),43);
+ const checked=rows[0].raw+'\n'+rows[1].raw.replace(/^0\t/,'1\t')+'\n';assert.deepEqual(observeCompletions(checked,initial.state),[43]);
+ const remaining=rows[1].raw+'\n';observeRemovals(remaining,initial.state,1000);observeRemovals(remaining,initial.state,3000);assert.deepEqual(initial.state.pendingArchives,[{id:42,displayVersion:1}]);
+});
 function memoryDb(){const drafts=new Map();return{drafts,async query(sql,args=[]){if(sql.startsWith('SELECT draft'))return[[drafts.has(args[0])?{draft:drafts.get(args[0])}:null].filter(Boolean)];if(sql.startsWith('INSERT INTO todo_conversations')){drafts.set(args[0],args[1]);return[{}];}if(sql.startsWith('DELETE FROM todo_conversations')){drafts.delete(args[0]);return[{}];}throw new Error(sql);}};}
 test('WA asks only missing fields; pending draft survives a handler restart and ambiguous noon',async()=>{
  const db=memoryDb(),created=[];const service={create:async input=>{created.push(input);return{id:1};},list:async()=>[]};
@@ -73,10 +90,10 @@ test('X queues a durable archive and cannot be resurrected by another task updat
  observeRemovals('',state,2600);assert.deepEqual(state.pendingArchives,[{id:42,displayVersion:1}]);
  state=JSON.parse(JSON.stringify(state));
  const other={...task,id:43,title:'New task'};
- const offline=merge('',[task,other],state,now);assert.doesNotMatch(offline.text,/WA #42/);assert.match(offline.text,/WA #43/);
+ const offline=merge('',[task,other],state,now);assert.equal(parseRows(offline.text).some(r=>identityOf(r.title)===42),false);assert.equal(parseRows(offline.text).some(r=>identityOf(r.title)===43),true);
  const archived={...task,archived:true,displayVersion:1};
  const empty=merge('',[archived],{version:2,tasks:{},pending:[],pendingArchives:[]},now);assert.equal(empty.text,'');
- const restored=merge('',[{...task,displayVersion:2}],{...state,pendingArchives:[]},now);assert.match(restored.text,/WA #42/);assert.equal(restored.state.tasks[42].visible,true);
+ const restored=merge('',[{...task,displayVersion:2}],{...state,pendingArchives:[]},now);assert.equal(identityOf(parseRows(restored.text)[0].title),42);assert.equal(restored.state.tasks[42].visible,true);
 });
 test('temporary truncation, a missing file, incomplete rows and manual tasks never trigger an archive',()=>{
  const first=merge('0\t1\t2\t0\tManual\n',[task],{version:2,tasks:{},pending:[],pendingArchives:[]},now);

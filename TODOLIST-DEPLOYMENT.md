@@ -33,6 +33,7 @@ Selain konfigurasi WA/database yang sudah ada, runtime memerlukan `PUBLIC_ORIGIN
 - Filter Diarsipkan dan tombol Pulihkan tersedia di web. Pemulihan meningkatkan versi tampilan, sehingga antrean penghapusan lama dari laptop tidak dapat membatalkan pemulihan. Penghubung versi 2 wajib dipasang setelah server mendukung protokol arsip.
 - Jawaban tanggal/jam singkat melanjutkan draft TodoList sebelum klasifikasi topik baru. Contoh pukul 02.27 WIB: “ingetin bangun tidur jam 3 nanti” menjadi hari ini 03.00; “jam 12” tetap meminta siang/malam.
 - Tugas manual Nusa dipertahankan; pembuatan tugas manual lokal belum diunggah ke server. Ketahanan Pomodoro aktif dan seluruh item Shelf saat restart belum terverifikasi.
+- Judul di Nusa tidak menampilkan awalan `[WA #ID]`. Identitas sinkronisasi memakai metadata tidak terlihat dan pemetaan lokal, sehingga tugas dengan nama/jadwal identik tetap dapat dibedakan. Format lama dimigrasikan sekali tanpa mengubah status tugas.
 
 ## Pemeriksaan
 

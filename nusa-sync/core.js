@@ -17,9 +17,15 @@ function validateTasks(input) {
 }
 function lineTitle(task) {
   const local = new Date(Date.parse(task.deadline) + 7 * 3600000).toISOString();
-  return `[WA #${task.id}] ${task.title} · ${local.slice(8,10)}/${local.slice(5,7)}/${local.slice(0,4)} ${local.slice(11,16)} WIB`;
+  const identity='\u2063'+task.id.toString(2).replace(/0/g,'\u200B').replace(/1/g,'\u200C')+'\u2063';
+  return `${task.title} · ${local.slice(8,10)}/${local.slice(5,7)}/${local.slice(0,4)} ${local.slice(11,16)} WIB${identity}`;
 }
-function matches(row,task,id) { return row.valid && (row.title===task.lineTitle || row.title.startsWith(`[WA #${id}] `)); }
+function identityOf(title){
+  const match=title.match(/\u2063([\u200B\u200C]{1,53})\u2063$/u);if(!match)return null;
+  const id=Number.parseInt(match[1].replace(/\u200B/g,'0').replace(/\u200C/g,'1'),2);
+  return Number.isSafeInteger(id)&&id>0?id:null;
+}
+function matches(row,task,id) { return row.valid && (row.title===task.lineTitle || row.title.startsWith(`[WA #${id}] `) || identityOf(row.title)===Number(id)); }
 function upgradeState(state,text) {
   if(![1,2].includes(state.version) || !state.tasks || Array.isArray(state.tasks) || !Array.isArray(state.pending))throw new Error('State lokal tidak valid.');
   const legacy=state.version===1,rows=typeof text==='string'?parseRows(text):[];
@@ -56,13 +62,14 @@ function observeRemovals(text,state,now=Date.now()) {
 }
 function waitingForRemovals(state){return Object.values(state.tasks).some(task=>task.visible && task.locallyHidden && !task.archived);}
 function hasServerChanges(tasks,state) {
+  if(state.titleFormat!==2)return true;
   if(tasks.length!==Object.keys(state.tasks).length)return true;
   return tasks.some(task=>{const old=state.tasks[task.id];return !old || old.title!==task.title || Date.parse(old.deadline)!==Date.parse(task.deadline) || old.done!==task.done || !!old.archived!==!!task.archived || (old.displayVersion??1)!==(task.displayVersion??1);});
 }
 function merge(text, tasks, state, now = new Date()) {
   tasks=validateTasks(tasks);
   const rows=parseRows(text),byId=new Map(tasks.map(t=>[t.id,t])),used=new Set(),output=[];
-  const next={version:2,tasks:{},pending:[...(state.pending||[])],pendingArchives:[...(state.pendingArchives||[])]};
+  const next={version:2,titleFormat:2,tasks:{},pending:[...(state.pending||[])],pendingArchives:[...(state.pendingArchives||[])]};
   const today=new Date(+now+7*3600000).toISOString().slice(0,10).replaceAll('-','');
   for(const task of tasks){
     const previous=state.tasks[task.id];const restored=task.displayVersion>(previous?.displayVersion??1);
@@ -91,4 +98,4 @@ function atomicWrite(file, text) {
   fs.mkdirSync(path.dirname(file),{recursive:true}); const temporary = file + '.nusa-sync-tmp';
   fs.writeFileSync(temporary,text,{encoding:'utf8',mode:0o600}); fs.renameSync(temporary,file);
 }
-module.exports = { parseRows,validateTasks,lineTitle,upgradeState,observeCompletions,observeRemovals,waitingForRemovals,hasServerChanges,merge,atomicWrite };
+module.exports = { parseRows,validateTasks,lineTitle,identityOf,upgradeState,observeCompletions,observeRemovals,waitingForRemovals,hasServerChanges,merge,atomicWrite };
