@@ -16,6 +16,8 @@ test('Indonesian dates, next calendar week, midnight boundary and ambiguous cloc
  assert.equal(naturalParts('jam 00:00',now).time,'00:00');
  assert.equal(naturalParts('tanggal 31 februari',now).conflict,true);
  assert.equal(sqlTime('2026-11-05 18:00'),'2026-11-05 11:00:00');
+ assert.equal(sqlTime('2026-10-26T20:30:00.000Z'),'2026-10-26 20:30:00');
+ assert.equal(sqlTime('2026-10-27T03:30:00.000+07:00'),'2026-10-26 20:30:00');
  assert.equal(reminderDay('2026-11-05T11:00:00Z',2),'2026-11-03');
  assert.throws(()=>parseDeadline('2026-02-30 18:00'));
  assert.throws(()=>parseDeadline('2026-11-05 24:00'));
@@ -109,4 +111,12 @@ test('a complete wake-up request needs no repeated date question; a period reply
  assert.equal(created[0].deadline,'2026-10-26T20:00:00.000Z');
  db.drafts.set('owner',JSON.stringify({title:'meeting',date:'2026-10-28',time:null,history:['jam 3'],reference:night.toISOString()}));
  assert.match(await chat.handle('owner','sore'),/disimpan/);assert.equal(created[1].deadline,'2026-10-28T08:00:00.000Z');
+});
+test('storage failure preserves a valid schedule and coba lagi retries the same task',async()=>{
+ const db=memoryDb(),night=new Date('2026-10-26T19:54:00Z');let attempts=0;
+ const chat=createTodoChat({db,service:{create:async data=>{attempts++;assert.equal(data.deadline,'2026-10-26T20:30:00.000Z');if(attempts===1){const error=new Error('database unavailable');error.code='ECONNREFUSED';throw error;}return{id:7};}},classify:async()=>{throw Error('Retry must use pending draft');},now:()=>night});
+ const failed=await chat.handle('owner','ingetin makan siang jam 3.30 hari ini',{intent:'tambah_todolist',isi:'makan siang'});
+ assert.match(failed,/belum berhasil disimpan/);assert.doesNotMatch(failed,/belum valid/);
+ const saved=JSON.parse(db.drafts.get('owner'));assert.equal(saved.date,'2026-10-27');assert.equal(saved.time,'03:30');assert.equal(saved.title,'makan siang');
+ assert.match(await chat.handle('owner','coba lagi'),/disimpan/);assert.equal(attempts,2);assert.equal(db.drafts.size,0);
 });

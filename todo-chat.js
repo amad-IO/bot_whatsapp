@@ -2,6 +2,9 @@
 const { naturalParts, localParts, parseDeadline, formatWib } = require('./todo-time');
 function createTodoChat({ db, service, classify, now = () => new Date() }) {
   const queues = new Map();
+  async function saveDraft(chatId,draft){
+    await db.query('INSERT INTO todo_conversations(chat_id,draft,expires_at) VALUES (?,?,DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR)) ON DUPLICATE KEY UPDATE draft=VALUES(draft), expires_at=VALUES(expires_at)', [chatId, JSON.stringify(draft)]);
+  }
   async function process(chatId, text, existingIntent) {
     const [rows] = await db.query('SELECT draft FROM todo_conversations WHERE chat_id=? AND expires_at>UTC_TIMESTAMP()', [chatId]);
     let draft = rows[0] ? (typeof rows[0].draft === 'string' ? JSON.parse(rows[0].draft) : rows[0].draft) : null;
@@ -9,7 +12,8 @@ function createTodoChat({ db, service, classify, now = () => new Date() }) {
     const shortReply=text.trim().toLowerCase().replace(/[?!.,]+$/,'').replace(/\s+/g,' ');
     const dateReply=/^(?:(?:iya|ya|untuk|deadline(?:nya)?|tanggalnya)\s+)?(?:hari ini|besok|lusa|(?:minggu depan(?: (?:tanggal|tgl) \d{1,2})?)|(?:tanggal|tgl) \d{1,2}(?: [a-z]+(?: 20\d\d)?)?|\d{4}-\d\d-\d\d)(?:\s+(?:jam|pukul)\s+\d{1,2}(?:[.:]\d{2})?(?:\s+(?:pagi|siang|sore|malam|nanti))*)?$/i.test(shortReply);
     const timeReply=/^(?:(?:iya|ya|sebelum|sebelom|seblm)\s+)?(?:(?:jam|pukul)\s+)?\d{1,2}(?:[.:]\d{2})?(?:\s+(?:pagi|siang|sore|malam|nanti))*$|^(pagi|siang|sore|malam)$/i.test(shortReply);
-    const intent = existingIntent || (draft && (dateReply || timeReply) ? {intent:'lanjut_todolist'} : await classify(text, draft));
+    const retryReply=draft?.date && draft?.time && /^(coba lagi|simpan(?: lagi)?|ulangi|ulang|lanjut)$/i.test(shortReply);
+    const intent = existingIntent || (draft && (dateReply || timeReply || retryReply) ? {intent:'lanjut_todolist'} : await classify(text, draft));
     if (['list_todolist','list_reminder'].includes(intent.intent)) {
       const active = (await service.list()).filter(t => !t.done && !t.archived);
       return active.length ? '📋 *TodoList aktif*\n' + active.map(t => `#${t.id} ${t.title}\n${formatWib(t.deadline)}`).join('\n\n') : '✅ Semua tugas sudah selesai.';
@@ -49,17 +53,25 @@ function createTodoChat({ db, service, classify, now = () => new Date() }) {
     else if (!draft.date) question = `Deadline “${draft.title}” tanggal berapa?`;
     else if (!draft.time) question = parts.ambiguous ? 'Jam berapa tepatnya—pagi, siang, sore, atau malam?' : 'Deadline jam berapa? Sebutkan pagi/siang/sore/malam atau format 24 jam.';
     if (!question) {
-      try {
-        const deadline = parseDeadline(draft.date + 'T' + draft.time);
-        if (+deadline <= +now()) question = 'Waktu itu sudah lewat. Deadline tanggal dan jam berapa yang kamu maksud?';
-        else {
-          const result = await service.create({ title: draft.title, deadline: deadline.toISOString() });
-          await db.query('DELETE FROM todo_conversations WHERE chat_id=?', [chatId]);
-          return `📋 TodoList #${result.id} disimpan: ${draft.title}\nJadwal: ${formatWib(deadline)}\nPengingat pada jadwal tersebut, ditambah pengingat harian 12.00 WIB mulai H-2 sampai selesai.`;
-        }
-      } catch { draft.date = null; draft.time = null; question = 'Tanggal atau jamnya belum valid. Sebutkan deadline lengkapnya, ya.'; }
+      let deadline;
+      try { deadline = parseDeadline(draft.date + 'T' + draft.time); }
+      catch {
+        try{parseDeadline(draft.date+'T00:00');}catch{draft.date=null;}
+        try{parseDeadline('2000-01-01T'+draft.time);}catch{draft.time=null;}
+        question=!draft.date?'Tanggalnya belum valid. Deadline tanggal berapa tepatnya?':'Jamnya belum valid. Sebutkan jam yang dimaksud, ya.';
+      }
+      if(deadline && +deadline<=+now())question='Waktu itu sudah lewat. Deadline tanggal dan jam berapa yang kamu maksud?';
+      if(deadline && !question){
+        // Preserve the understood schedule before attempting a write. Storage failures are not date errors.
+        await saveDraft(chatId,draft);
+        let result;
+        try{result=await service.create({title:draft.title,deadline:deadline.toISOString()});}
+        catch(error){console.error('[TodoList] Gagal menyimpan tugas:',error.code||error.name);return `Jadwal “${draft.title}” sudah terbaca: ${formatWib(deadline)}, tetapi tugas belum berhasil disimpan. Balas “coba lagi” untuk mengulangi penyimpanan.`;}
+        await db.query('DELETE FROM todo_conversations WHERE chat_id=?',[chatId]);
+        return `📋 TodoList #${result.id} disimpan: ${draft.title}\nJadwal: ${formatWib(deadline)}\nPengingat pada jadwal tersebut, ditambah pengingat harian 12.00 WIB mulai H-2 sampai selesai.`;
+      }
     }
-    await db.query('INSERT INTO todo_conversations(chat_id,draft,expires_at) VALUES (?,?,DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR)) ON DUPLICATE KEY UPDATE draft=VALUES(draft), expires_at=VALUES(expires_at)', [chatId, JSON.stringify(draft)]);
+    await saveDraft(chatId,draft);
     return question;
   }
   return {

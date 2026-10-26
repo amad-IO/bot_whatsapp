@@ -6,7 +6,7 @@ function parseDeadline(value) {
   if (typeof value !== 'string') throw new Error('Deadline wajib berupa tanggal dan jam.');
   let s = value.trim().replace(' ', 'T');
   if (/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(s)) s += ':00+07:00';
-  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d)?(Z|[+-]\d\d:\d\d)$/.test(s)) throw new Error('Tanggal/jam harus menyertakan zona waktu atau memakai format YYYY-MM-DD HH:mm WIB.');
+  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(?:\.\d{1,3})?)?(Z|[+-]\d\d:\d\d)$/.test(s)) throw new Error('Tanggal/jam harus menyertakan zona waktu atau memakai format YYYY-MM-DD HH:mm WIB.');
   const d = new Date(s);
   if (!Number.isFinite(+d)) throw new Error('Deadline tidak valid.');
   const input = s.slice(0, 10);

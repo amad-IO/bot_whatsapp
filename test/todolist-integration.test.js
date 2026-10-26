@@ -5,6 +5,7 @@ const mysql=require('mysql2/promise'),express=require('express'),OTPAuth=require
 const {migrate}=require('../migrate-todolist');
 const {createAuth}=require('../web-auth');
 const {createTodoService,registerTodoRoutes}=require('../todo-service');
+const {createTodoChat}=require('../todo-chat');
 test('isolated MySQL: migration, code-only login + TOTP, access boundaries, TodoList scheduling', {skip:!process.env.RUN_TODO_DB_TESTS},async t=>{
  const name='nusa_test_'+crypto.randomBytes(6).toString('hex');
  const options={host:process.env.DB_HOST||'localhost',port:Number(process.env.DB_PORT)||3306,user:process.env.DB_USER||'root',password:process.env.DB_PASSWORD||'',timezone:'Z',dateStrings:true};
@@ -75,6 +76,16 @@ test('isolated MySQL: migration, code-only login + TOTP, access boundaries, Todo
   await service.notifyDue(text=>dueSent.push(text),new Date('2026-11-05T20:00:00Z'));await service.notifyDue(text=>dueSent.push(text),new Date('2026-11-05T20:00:30Z'));assert.equal(dueSent.filter(x=>x.includes('Wake up at three')).length,1);assert.equal(dueSent.filter(x=>x.includes('Archived on Nusa')).length,0);
   const noon=await service.create({title:'Noon task',deadline:'2026-11-07 12:00'});const noonSent=[];
   await service.notifyDue(text=>noonSent.push(text),new Date('2026-11-07T05:00:00Z'));await service.notifyDaily(text=>noonSent.push(text),new Date('2026-11-07T05:00:00Z'));assert.equal(noonSent.filter(x=>x.includes('Noon task')).length,1);
+  // Exercise the full WA -> conversation -> real service -> MySQL path, not a mocked create().
+  const waClock=new Date('2026-10-26T19:54:00Z');
+  const waChat=createTodoChat({db,service,now:()=>waClock,classify:async()=>{throw Error('Short follow-up must stay in the task conversation');}});
+  const initialReply=await waChat.handle('wa-repro-initial','ingetin makan siang jam 3.30 hari ini',{intent:'tambah_todolist',isi:'makan siang'});
+  assert.match(initialReply,/disimpan/);const initialId=Number(initialReply.match(/#(\d+)/)[1]);
+  const storedInitial=(await service.list()).find(x=>x.id===initialId);assert.equal(Date.parse(storedInitial.deadline),Date.parse('2026-10-26T20:30:00.000Z'));
+  await db.query('INSERT INTO todo_conversations(chat_id,draft,expires_at) VALUES (?,?,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 HOUR))',['wa-repro-followup',JSON.stringify({title:'makan siang',date:null,time:null,history:['ingetin makan siang jam 3.30 hari ini'],reference:waClock.toISOString()})]);
+  const followReply=await waChat.handle('wa-repro-followup','hari ini jam 3.30 pagi');assert.match(followReply,/disimpan/);const followId=Number(followReply.match(/#(\d+)/)[1]);
+  const storedFollow=(await service.list()).find(x=>x.id===followId);assert.equal(Date.parse(storedFollow.deadline),Date.parse('2026-10-26T20:30:00.000Z'));assert.equal(storedFollow.title,'makan siang');
+  const [pendingFollow]=await db.query('SELECT chat_id FROM todo_conversations WHERE chat_id=?',['wa-repro-followup']);assert.equal(pendingFollow.length,0);
   await call('/api/auth/logout',{body:{}});assert.equal((await call('/api/todolist')).response.status,401);
   cookie='';csrf='';
   assert.equal((await call('/api/auth/enroll',{body:{}})).response.status,403); // public requests cannot obtain the QR
