@@ -34,7 +34,7 @@ Selain konfigurasi WA/database yang sudah ada, runtime memerlukan `PUBLIC_ORIGIN
 - Jawaban tanggal/jam singkat melanjutkan draft TodoList sebelum klasifikasi topik baru. Contoh pukul 02.27 WIB: “ingetin bangun tidur jam 3 nanti” menjadi hari ini 03.00; “jam 12” tetap meminta siang/malam.
 - Tugas manual Nusa dipertahankan; pembuatan tugas manual lokal belum diunggah ke server. Ketahanan Pomodoro aktif dan seluruh item Shelf saat restart belum terverifikasi.
 - Judul di Nusa tidak menampilkan awalan `[WA #ID]`. Identitas sinkronisasi memakai metadata tidak terlihat dan pemetaan lokal, sehingga tugas dengan nama/jadwal identik tetap dapat dibedakan. Format lama dimigrasikan sekali tanpa mengubah status tugas.
-- Shortcut Startup menjalankan penjaga latar belakang (`guard.vbs`). Jika penghubung berhenti, penjaga mencoba menjalankannya kembali setelah lima detik; mutex dan pemeriksaan proses mencegah penghubung ganda. Skrip peluncur mencatat kesalahan ke `task.log`. Task terjadwal lama yang tidak andal dimigrasikan oleh installer.
+- Shortcut Startup menjalankan penjaga PowerShell (`watchdog.ps1`) dengan peluncur langsung yang mencoba lagi bila berkas belum tersedia. Jika penghubung berhenti, penjaga mencoba menjalankannya kembali setelah lima detik; mutex dan pemeriksaan proses mencegah penghubung ganda. Skrip peluncur mencatat kesalahan ke `task.log`. Peluncur VBS dan task terjadwal lama dimigrasikan oleh installer.
 - Rentang jam Nusa menggunakan waktu pembuatan tugas di server sebagai jam awal dan deadline sebagai jam akhir. Tanggal deadline lengkap tetap dicantumkan pada judul, karena form asli Nusa hanya mendukung jam.
 
 ## Pemeriksaan

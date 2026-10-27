@@ -9,7 +9,7 @@ New-Item -ItemType Directory -Force -Path $target | Out-Null
 $account = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 & icacls.exe $target '/inheritance:r' '/grant:r' "${account}:(OI)(CI)F" 'SYSTEM:(OI)(CI)F' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Tidak dapat mengamankan folder NusaSync.' }
-foreach ($name in @('connector.js','core.js','read-key.ps1','restart-nusa.ps1','start.ps1','guard.vbs')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $target -Force }
+foreach ($name in @('connector.js','core.js','read-key.ps1','restart-nusa.ps1','start.ps1','watchdog.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $target -Force }
 @{server=$uri.GetLeftPart([UriPartial]::Authority)} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $target 'config.json') -Encoding UTF8
 ConvertTo-SecureString -String $key -AsPlainText -Force | ConvertFrom-SecureString | Set-Content -LiteralPath (Join-Path $target 'key.dpapi')
 $key = $null
@@ -20,11 +20,16 @@ if ($oldTask) { Stop-ScheduledTask -TaskName 'Nusa TodoList Sync'; Unregister-Sc
 $startup = [Environment]::GetFolderPath('Startup')
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut((Join-Path $startup 'Nusa TodoList Sync.lnk'))
-$shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
-$shortcut.Arguments = '"' + (Join-Path $target 'guard.vbs') + '"'
+$watchdogPath = (Join-Path $target 'watchdog.ps1').Replace("'", "''")
+# The inline launcher can retry even if the helper is temporarily unavailable at logon.
+$guardCommand = "`$ErrorActionPreference='Stop'; `$env:PSModulePath=Join-Path `$PSHOME 'Modules'; `$NusaSyncWatchdog=1; while(`$true){try{& '$watchdogPath'}catch{}; Start-Sleep -Seconds 5}"
+$shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$shortcut.Arguments = '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -Command "' + $guardCommand + '"'
 $shortcut.WindowStyle = 7
 $shortcut.Description = 'Sinkronisasi TodoList Nusa dengan pemulihan otomatis'
 $shortcut.Save()
-$guard = Get-CimInstance Win32_Process -Filter "Name = 'wscript.exe'" | Where-Object { $_.CommandLine -like '*NusaSync*guard.vbs*' }
+$legacyGuard = Get-CimInstance Win32_Process -Filter "Name = 'wscript.exe'" | Where-Object { $_.CommandLine -like '*NusaSync*guard.vbs*' }
+foreach ($process in $legacyGuard) { Stop-Process -Id $process.ProcessId -ErrorAction SilentlyContinue }
+$guard = Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -like '*NusaSyncWatchdog*' }
 if (!$guard) { Start-Process -FilePath $shortcut.TargetPath -ArgumentList $shortcut.Arguments -WindowStyle Hidden }
 Write-Host 'NusaSync terpasang untuk pengguna ini.'
