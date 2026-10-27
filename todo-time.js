@@ -34,7 +34,9 @@ function naturalParts(text, now = new Date()) {
   let date = null, time = null, ambiguous = false, conflict = false;
   const explicit = s.match(/\b(\d{4}-\d\d-\d\d)\b/);
   const nth = s.match(/\b(?:tanggal|tgl)\s*(\d{1,2})\b/);
-  const relative = /\blusa\b/.test(s) ? 2 : /\bbesok\b/.test(s) ? 1 : /\bhari ini\b/.test(s) ? 0 : null;
+  const daysAhead=s.match(/\b(\d{1,3}|satu|dua|tiga|empat|lima|enam|tujuh|delapan|sembilan|sepuluh)\s+hari\s+(?:lagi|ke depan)\b/);
+  const numberWords={satu:1,dua:2,tiga:3,empat:4,lima:5,enam:6,tujuh:7,delapan:8,sembilan:9,sepuluh:10};
+  const relative = daysAhead ? (numberWords[daysAhead[1]]??Number(daysAhead[1])) : /\blusa\b/.test(s) ? 2 : /\bbesok\b/.test(s) ? 1 : /\bhari ini\b/.test(s) ? 0 : null;
   if (explicit) date = explicit[1];
   else if (relative !== null) date = new Date(+base + relative * DAY).toISOString().slice(0, 10);
   if (/minggu depan/.test(s)) {

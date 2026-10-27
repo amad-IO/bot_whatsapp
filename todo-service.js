@@ -9,11 +9,11 @@ function validId(value) { if (!/^[1-9]\d{0,9}$/.test(String(value))) throw new E
 function createTodoService({ db, eventBus, syncSheets = async () => {} }) {
   const changed = () => { eventBus.emit('todolists-updated'); eventBus.emit('reminders-updated'); };
   function toTask(row) {
-    const task = { id: row.id, title: row.isi, deadline: isoFromSql(row.waktu), done: row.status === DONE, archived: !!row.archived_at, displayVersion: row.display_version, leadDays: row.lead_days, revision: row.revision, lastNotifiedDay: row.last_day || null };
+    const task = { id: row.id, title: row.isi, deadline: isoFromSql(row.waktu), createdAt:row.created_at?isoFromSql(row.created_at):null, done: row.status === DONE, archived: !!row.archived_at, displayVersion: row.display_version, leadDays: row.lead_days, revision: row.revision, lastNotifiedDay: row.last_day || null };
     task.nextReminder = nextReminder(task); return task;
   }
   async function list() {
-    const [rows] = await db.query(`SELECT t.*, DATE_FORMAT(t.waktu, '%Y-%m-%d %H:%i:%s') AS waktu,
+    const [rows] = await db.query(`SELECT t.*, DATE_FORMAT(t.waktu, '%Y-%m-%d %H:%i:%s') AS waktu, DATE_FORMAT(t.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
       (SELECT DATE_FORMAT(MAX(n.local_day), '%Y-%m-%d') FROM todo_notifications n WHERE n.task_id=t.id AND n.state='sent') AS last_day
       FROM bot_todolist t ORDER BY t.waktu, t.id`);
     return rows.map(toTask);
@@ -21,7 +21,7 @@ function createTodoService({ db, eventBus, syncSheets = async () => {} }) {
   function sheet(data) { Promise.resolve(syncSheets(data)).catch(() => console.error('[TodoList] Sinkronisasi Sheets gagal.')); }
   async function create(input) {
     const title = validTitle(input.title), deadline = sqlTime(input.deadline);
-    const [result] = await db.query('INSERT INTO bot_todolist(isi,waktu,status,lead_days) VALUES (?,?,?,2)', [title, deadline, ACTIVE]);
+    const [result] = await db.query('INSERT INTO bot_todolist(isi,waktu,status,lead_days,created_at) VALUES (?,?,?,2,UTC_TIMESTAMP())', [title, deadline, ACTIVE]);
     changed(); sheet({ token: process.env.GOOGLE_SHEET_TOKEN || '', action: 'reminder_baru', id: result.insertId, isi: title, waktu: deadline, status: ACTIVE });
     return { id: result.insertId };
   }

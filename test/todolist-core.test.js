@@ -42,6 +42,14 @@ test('Nusa rejects malicious row delimiters, duplicate IDs and invalid server pa
  for(const bad of [{...task,title:'bad\n1\t0\t0\t0\tpayload'}, {...task,id:'../../file'}, {...task,deadline:'bad'}, {...task,done:'true'}])assert.throws(()=>validateTasks([bad]));
  assert.throws(()=>validateTasks([task,task]));
 });
+test('Nusa starts at the task creation time and ends at its deadline without changing the full date',()=>{
+ const scheduled={...task,createdAt:'2026-10-27T04:58:29Z',deadline:'2026-11-01T16:00:00Z'};
+ const result=merge('',[scheduled],{version:2,tasks:{},pending:[],pendingArchives:[]},now);
+ const fields=parseRows(result.text)[0].raw.split('\t');assert.equal(fields[1],String(11*60+58));assert.equal(fields[2],String(23*60));assert.match(fields[4],/01\/11\/2026 23:00 WIB/);
+ assert.equal(hasServerChanges([scheduled],result.state),false);
+ const old=merge('',[{...scheduled,createdAt:null}],{version:2,tasks:{},pending:[],pendingArchives:[]},now);assert.equal(hasServerChanges([scheduled],old.state),true);
+ assert.throws(()=>validateTasks([{...scheduled,createdAt:'not a timestamp'}]));
+});
 test('visible WA labels migrate away while completion and archive retain the same task ID',()=>{
  const oldTitle='[WA #42] Desain interaksi · 05/11/2026 18:00 WIB';
  const text='0\t1080\t1080\t20261027\t'+oldTitle+'\n';
@@ -60,6 +68,14 @@ test('identical visible titles and deadlines still map to separate task IDs',()=
  const remaining=rows[1].raw+'\n';observeRemovals(remaining,initial.state,1000);observeRemovals(remaining,initial.state,3000);assert.deepEqual(initial.state.pendingArchives,[{id:42,displayVersion:1}]);
 });
 function memoryDb(){const drafts=new Map();return{drafts,async query(sql,args=[]){if(sql.startsWith('SELECT draft'))return[[drafts.has(args[0])?{draft:drafts.get(args[0])}:null].filter(Boolean)];if(sql.startsWith('INSERT INTO todo_conversations')){drafts.set(args[0],args[1]);return[{}];}if(sql.startsWith('DELETE FROM todo_conversations')){drafts.delete(args[0]);return[{}];}throw new Error(sql);}};}
+test('three days ahead uses the WIB calendar and continues a pending task',async()=>{
+ assert.equal(naturalParts('3 hari lagi jam 23.00',now).date,'2026-10-30');
+ assert.equal(naturalParts('tiga hari lagi',new Date('2026-10-26T18:30:00Z')).date,'2026-10-30');
+ const created=[];const chat=createTodoChat({db:memoryDb(),service:{create:async input=>{created.push(input);return{id:1};}},now:()=>now,classify:async()=>{throw new Error('Date replies must stay in the pending TodoList context');}});
+ await chat.handle('owner','ingatkan desain',{intent:'tambah_todolist',isi:'desain'});
+ assert.match(await chat.handle('owner','3 hari lagi'),/jam berapa/);
+ assert.match(await chat.handle('owner','jam 23.00'),/disimpan/);assert.equal(created[0].deadline,'2026-10-30T16:00:00.000Z');
+});
 test('WA asks only missing fields; pending draft survives a handler restart and ambiguous noon',async()=>{
  const db=memoryDb(),created=[];const service={create:async input=>{created.push(input);return{id:1};},list:async()=>[]};
  let chat=createTodoChat({db,service,now:()=>now});

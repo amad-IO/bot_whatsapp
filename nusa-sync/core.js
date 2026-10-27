@@ -12,7 +12,8 @@ function validateTasks(input) {
   const ids = new Set();
   return input.map(t => {
     if (!t || !Number.isSafeInteger(t.id) || t.id < 1 || ids.has(t.id) || typeof t.title !== 'string' || !t.title.trim() || t.title.length > 500 || /[\u0000-\u001f\u007f]/.test(t.title) || typeof t.done !== 'boolean' || !Number.isSafeInteger(t.revision) || t.revision < 1 || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(t.deadline) || !Number.isFinite(Date.parse(t.deadline)) || (t.archived!==undefined && typeof t.archived!=='boolean') || (t.displayVersion!==undefined && (!Number.isSafeInteger(t.displayVersion) || t.displayVersion<1))) throw new Error('Data tugas server ditolak.');
-    ids.add(t.id); return { id:t.id,title:t.title,done:t.done,deadline:t.deadline,revision:t.revision,archived:t.archived??false,displayVersion:t.displayVersion??1 };
+    if(t.createdAt!=null && (typeof t.createdAt!=='string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(t.createdAt) || !Number.isFinite(Date.parse(t.createdAt))))throw new Error('Waktu pembuatan tugas ditolak.');
+    ids.add(t.id); return { id:t.id,title:t.title,done:t.done,deadline:t.deadline,createdAt:t.createdAt?new Date(t.createdAt).toISOString():null,revision:t.revision,archived:t.archived??false,displayVersion:t.displayVersion??1 };
   });
 }
 function lineTitle(task) {
@@ -64,7 +65,7 @@ function waitingForRemovals(state){return Object.values(state.tasks).some(task=>
 function hasServerChanges(tasks,state) {
   if(state.titleFormat!==2)return true;
   if(tasks.length!==Object.keys(state.tasks).length)return true;
-  return tasks.some(task=>{const old=state.tasks[task.id];return !old || old.title!==task.title || Date.parse(old.deadline)!==Date.parse(task.deadline) || old.done!==task.done || !!old.archived!==!!task.archived || (old.displayVersion??1)!==(task.displayVersion??1);});
+  return tasks.some(task=>{const old=state.tasks[task.id];return !old || old.title!==task.title || Date.parse(old.deadline)!==Date.parse(task.deadline) || (old.createdAt?Date.parse(old.createdAt):null)!==(task.createdAt?Date.parse(task.createdAt):null) || old.done!==task.done || !!old.archived!==!!task.archived || (old.displayVersion??1)!==(task.displayVersion??1);});
 }
 function merge(text, tasks, state, now = new Date()) {
   tasks=validateTasks(tasks);
@@ -81,10 +82,12 @@ function merge(text, tasks, state, now = new Date()) {
     if(task.archived || entry.locallyHidden)return;
     const local=new Date(Date.parse(task.deadline)+7*3600000).toISOString();
     const minute=Number(local.slice(11,13))*60+Number(local.slice(14,16));
+    const start=new Date(Date.parse(task.createdAt||task.deadline)+7*3600000).toISOString();
+    const startMinute=Number(start.slice(11,13))*60+Number(start.slice(14,16));
     const fired=raw?.raw.split('\t')[3]||today;
     const restored=task.displayVersion>(previous?.displayVersion??1);
     if(task.done && !raw && !restored)return;
-    output.push([task.done?1:0,minute,minute,fired,entry.lineTitle].join('\t'));entry.visible=true;
+    output.push([task.done?1:0,startMinute,minute,fired,entry.lineTitle].join('\t'));entry.visible=true;
   }
   for(const row of rows){
     const id=Object.keys(state.tasks).find(id=>matches(row,state.tasks[id],id));

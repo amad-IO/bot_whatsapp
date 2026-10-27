@@ -10,7 +10,7 @@ function createTodoChat({ db, service, classify, now = () => new Date() }) {
     let draft = rows[0] ? (typeof rows[0].draft === 'string' ? JSON.parse(rows[0].draft) : rows[0].draft) : null;
     if (draft && /^(batal|batalkan|cancel)$/i.test(text.trim())) { await db.query('DELETE FROM todo_conversations WHERE chat_id=?', [chatId]); return 'Pembuatan TodoList dibatalkan.'; }
     const shortReply=text.trim().toLowerCase().replace(/[?!.,]+$/,'').replace(/\s+/g,' ');
-    const dateReply=/^(?:(?:iya|ya|untuk|deadline(?:nya)?|tanggalnya)\s+)?(?:hari ini|besok|lusa|(?:minggu depan(?: (?:tanggal|tgl) \d{1,2})?)|(?:tanggal|tgl) \d{1,2}(?: [a-z]+(?: 20\d\d)?)?|\d{4}-\d\d-\d\d)(?:\s+(?:jam|pukul)\s+\d{1,2}(?:[.:]\d{2})?(?:\s+(?:pagi|siang|sore|malam|nanti))*)?$/i.test(shortReply);
+    const dateReply=/^(?:(?:iya|ya|untuk|deadline(?:nya)?|tanggalnya)\s+)?(?:hari ini|besok|lusa|(?:(?:\d{1,3}|satu|dua|tiga|empat|lima|enam|tujuh|delapan|sembilan|sepuluh)\s+hari\s+(?:lagi|ke depan))|(?:minggu depan(?: (?:tanggal|tgl) \d{1,2})?)|(?:tanggal|tgl) \d{1,2}(?: [a-z]+(?: 20\d\d)?)?|\d{4}-\d\d-\d\d)(?:\s+(?:jam|pukul)\s+\d{1,2}(?:[.:]\d{2})?(?:\s+(?:pagi|siang|sore|malam|nanti))*)?$/i.test(shortReply);
     const timeReply=/^(?:(?:iya|ya|sebelum|sebelom|seblm)\s+)?(?:(?:jam|pukul)\s+)?\d{1,2}(?:[.:]\d{2})?(?:\s+(?:pagi|siang|sore|malam|nanti))*$|^(pagi|siang|sore|malam)$/i.test(shortReply);
     const retryReply=draft?.date && draft?.time && /^(coba lagi|simpan(?: lagi)?|ulangi|ulang|lanjut)$/i.test(shortReply);
     const intent = existingIntent || (draft && (dateReply || timeReply || retryReply) ? {intent:'lanjut_todolist'} : await classify(text, draft));

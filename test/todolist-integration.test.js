@@ -16,7 +16,7 @@ test('isolated MySQL: migration, code-only login + TOTP, access boundaries, Todo
   await db.query("INSERT INTO bot_reminder(isi,waktu,status) VALUES ('legacy active','2026-11-05 11:00:00','Terkirim'),('legacy done','2026-11-05 11:00:00','Tugas Selesai')");
   await migrate(db);await migrate(db);
   const [migrated]=await db.query('SELECT id,status FROM bot_todolist ORDER BY id');assert.equal(migrated[0].status,'Menunggu Waktu');assert.equal(migrated[1].status,'Tugas Selesai');
-  const app=express();app.use(express.json());let clock=new Date('2026-10-27T03:00:00Z');
+  const app=express();app.use(express.json());let clock=new Date();
   server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
   const origin='http://127.0.0.1:'+server.address().port;
   const env={PUBLIC_ORIGIN:origin,WEB_AUTH_ENCRYPTION_KEY:crypto.randomBytes(32).toString('hex'),WEB_SETUP_TOKEN:crypto.randomBytes(32).toString('hex')};
@@ -42,7 +42,9 @@ test('isolated MySQL: migration, code-only login + TOTP, access boundaries, Todo
   assert.match(verify.response.headers.get('set-cookie'),/HttpOnly; SameSite=Strict/);
   const [secretRows]=await db.query('SELECT totp_secret FROM web_admin');assert.notEqual(secretRows[0].totp_secret,setup.data.secret);
   assert.equal((await call('/api/todolist',{body:{title:'Denied CSRF',deadline:'2026-11-05 18:00'},headers:{'X-CSRF-Token':''}})).response.status,403);
+  const beforeCreate=Date.now();
   const created=await call('/api/todolist',{body:{title:'Test task',deadline:'2026-11-05 18:00'}});assert.equal(created.response.status,201);const id=created.data.id;
+  const storedTask=(await service.list()).find(task=>task.id===id);assert.ok(Date.parse(storedTask.createdAt)>=beforeCreate-1000);assert.ok(Date.parse(storedTask.createdAt)<=Date.now()+1000);
   assert.equal((await call('/api/todolist/'+id,{method:'PATCH',body:{title:'outdated',revision:999}})).response.status,409);
   assert.equal((await call('/api/nusa/tasks')).response.status,401);
   assert.equal((await call('/api/nusa/tasks',{headers:{'X-Nusa-Key':'scoped-test-key'}})).response.status,200);
